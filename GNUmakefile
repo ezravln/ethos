@@ -26,12 +26,12 @@ endif
 
 SOURCE_DIRS := \
 	arch \
-	boot \
 	init \
 	kernel \
 	lib \
 	debug \
-	assembly
+	assembly \
+	limine \ 
 
 # User controllable linker command.
 LD := $(TOOLCHAIN_PREFIX)ld
