@@ -66,3 +66,12 @@ void serial_write(const char* str)
   }
 }
 
+char serial_read_char(void)
+{
+    while ((inb(COM1 + 5) & 0x01) == 0)
+    {
+        __asm__ volatile ("pause");
+    }
+
+    return (char)inb(COM1);
+}
