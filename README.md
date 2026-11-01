@@ -35,7 +35,7 @@ Clone the repository:
 
 ```bash
 git clone https://github.com/ezravln/ethos.git
-cd Ethos
+cd ethos
 ```
 
 Build the project:
