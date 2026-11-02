@@ -9,11 +9,16 @@ set -Eeuo pipefail
 # ============================================================
 
 make clean
-bear -- make
+if command -v bear >/dev/null 2>&1; then
+  bear -- make
+else
+  make
+fi
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 KERNEL="$ROOT_DIR/bin/ethos"
+COMMAND_DIR="$ROOT_DIR/bin/commands"
 LIMINE_DIR="$ROOT_DIR/boot/limine/limine-binary"
 LIMINE_CONFIG="$ROOT_DIR/boot/limine/limine.conf"
 ISO_ROOT="$ROOT_DIR/root"
@@ -52,6 +57,12 @@ done
 
 [[ -f "$KERNEL" ]] ||
   die "Kernel not found: bin/ethos. Build the kernel first."
+
+[[ -d "$COMMAND_DIR" ]] ||
+  die "Command directory not found: bin/commands. Build the project first."
+
+shopt -s nullglob
+COMMAND_BINARIES=("$COMMAND_DIR"/*.elf)
 
 [[ -f "$LIMINE_CONFIG" ]] ||
   die "Limine configuration not found: boot/limine/limine.conf"
@@ -93,6 +104,11 @@ install -m 0644 \
   "$KERNEL" \
   "$ISO_ROOT/boot/ethos"
 
+mkdir -p "$ISO_ROOT/boot/bin"
+if [[ ${#COMMAND_BINARIES[@]} -gt 0 ]]; then
+  install -m 0644 "${COMMAND_BINARIES[@]}" "$ISO_ROOT/boot/bin/"
+fi
+
 # ============================================================
 # Stage Limine configuration and boot files
 # ============================================================
@@ -102,6 +118,15 @@ info "Copying boot configuration and Limine files..."
 install -m 0644 \
   "$LIMINE_CONFIG" \
   "$ISO_ROOT/boot/limine/limine.conf"
+
+for command_binary in "${COMMAND_BINARIES[@]}"; do
+  command_name="$(basename -- "$command_binary" .elf)"
+  [[ "$command_name" =~ ^[A-Za-z0-9._-]+$ ]] ||
+    die "Invalid command binary name: $command_name"
+  printf '    module_path: boot():/boot/bin/%s.elf\n    module_string: %s\n' \
+    "$command_name" "$command_name" \
+    >> "$ISO_ROOT/boot/limine/limine.conf"
+done
 
 install -m 0644 \
   "$LIMINE_DIR/limine-bios.sys" \

@@ -27,11 +27,20 @@ endif
 SOURCE_DIRS := \
 	arch \
 	init \
-	kernel \
 	lib \
 	debug \
+  console \
+  input \
+  shell \
+  fs \
 	assembly \
-	limine \ 
+  limine \
+  mm \
+  proc \
+  sched
+
+USER_COMMAND_SOURCES := $(wildcard commands/*.c)
+USER_COMMAND_BINARIES := $(patsubst commands/%.c,bin/commands/%.elf,$(USER_COMMAND_SOURCES))
 
 # User controllable linker command.
 LD := $(TOOLCHAIN_PREFIX)ld
@@ -44,6 +53,10 @@ endif
 
 # User controllable C flags.
 CFLAGS := -g -O2 -pipe
+USER_CFLAGS := -O2 -Wall -Wextra -std=gnu11 -ffreestanding \
+  -fno-stack-protector -fno-stack-check -fno-PIC -fno-PIE \
+  -m64 -march=x86-64 -mabi=sysv -mno-80387 -mno-mmx \
+  -mno-sse -mno-sse2 -mno-red-zone -mcmodel=small
 
 # User controllable C preprocessor flags. We set none by default.
 CPPFLAGS :=
@@ -130,7 +143,7 @@ override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d) $(
 
 # Default target. This must come first, before header dependencies.
 .PHONY: all
-all: bin/$(OUTPUT)
+all: bin/$(OUTPUT) $(USER_COMMAND_BINARIES)
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
@@ -139,6 +152,12 @@ all: bin/$(OUTPUT)
 bin/$(OUTPUT): GNUmakefile linker/x86_64.lds $(OBJ)
 	mkdir -p "$(dir $@)"
 	$(LD) $(LDFLAGS) $(OBJ) -o $@
+
+bin/commands/%.elf: commands/%.c linker/user_x86_64.lds GNUmakefile
+	mkdir -p "$(dir $@)"
+	$(CC) $(USER_CFLAGS) -nostdlib -static -no-pie \
+		-Wl,-T,linker/user_x86_64.lds -Wl,--build-id=none \
+		-Wl,-z,max-page-size=0x1000 $< -o $@
 
 # Compilation rules for *.c files.
 obj/%.c.o: %.c GNUmakefile

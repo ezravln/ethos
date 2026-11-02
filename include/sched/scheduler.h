@@ -39,10 +39,12 @@ bool thread_create_named(
 );
 
 bool thread_create_user(
+  const char *name,
   uint64_t process_id,
   uintptr_t entry,
   uintptr_t user_stack,
-  uint64_t address_space_root
+  uint64_t address_space_root,
+  uint64_t *task_id
 );
 
 bool scheduler_start(void);

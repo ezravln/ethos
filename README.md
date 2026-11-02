@@ -56,15 +56,19 @@ These commands may change as the build system develops. Check the project's buil
 
 Ethos is a work in progress. Development is focused on the kernel and the basic components required to run programs and manage hardware.
 
-Planned work includes:
+The current kernel includes:
 
-- GRUB boot support
-- PIT Timer & Interrupt Handler
-- Memory management
-- Hardware drivers
-- Process and thread management
-- Storage and filesystem support
-- User-space applications
+- Limine boot metadata for the HHDM and physical memory map
+- x86-64 GDT/TSS and IDT exception handling
+- Remapped PIC with a 100 Hz PIT timer interrupt
+- 4-level paging helpers and usable-page allocation
+- Round-robin kernel threads and initial ring-3 process support
+- SYSCALL/SYSRET setup with exit and character output calls
+- Limine framebuffer text console and serial logging
+- Fixed-capacity in-memory filesystem with create, read, write, remove, stat, and root listing
+- Interactive keyboard shell that resolves commands from Limine-loaded ELF modules
+
+The current RAMFS holds up to 16 root-level files of 4 KiB each and is cleared at reboot. The shell currently accepts command names without arguments. Each `commands/<name>.c` is built as a separate static ELF64 binary and automatically loaded by Limine under `<name>`; adding a command does not require editing a command table or Limine config. Persistent filesystems require a block-device driver and are still planned. Remaining work includes richer ELF loading, process/address-space teardown, broader device support, and user-space applications.
 
 The list may change as development progresses.
 

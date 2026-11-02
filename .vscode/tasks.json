@@ -1,0 +1,867 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Verify EthOS VGA build",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Build EthOS ISO",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Smoke test EthOS VGA",
+			"type": "shell",
+			"command": "timeout",
+			"args": [
+				"8s",
+				"qemu-system-x86_64",
+				"-M",
+				"q35",
+				"-m",
+				"512M",
+				"-cdrom",
+				"build/ethos.iso",
+				"-boot",
+				"d",
+				"-serial",
+				"stdio",
+				"-display",
+				"none",
+				"-monitor",
+				"none",
+				"-no-reboot",
+				"-no-shutdown"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Capture EthOS serial boot",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"timeout 10s qemu-system-x86_64 -M q35 -m 512M -cdrom build/ethos.iso -boot d -serial file:/tmp/ethos-serial-final.log -display none -monitor none -no-reboot -no-shutdown; cat /tmp/ethos-serial-final.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect QEMU VGA state",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"rm -f /tmp/ethos-qemu.sock; qemu-system-x86_64 -M q35 -m 512M -cdrom build/ethos.iso -boot d -serial file:/tmp/ethos-inspect-serial.log -display none -monitor unix:/tmp/ethos-qemu.sock,server,nowait -no-reboot -no-shutdown -daemonize; printf 'info vga\\nxp /16hx 0xb8000\\nquit\\n' | socat - UNIX-CONNECT:/tmp/ethos-qemu.sock; cat /tmp/ethos-inspect-serial.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Read VGA mode register state",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"printf 'info vga\\n' | socat -t 2 - UNIX-CONNECT:/tmp/ethos-qemu.sock; printf '\\n-- VGA memory --\\n'; printf 'xp /16hx 0xb8000\\n' | socat -t 2 - UNIX-CONNECT:/tmp/ethos-qemu.sock; printf '\\n-- serial --\\n'; cat /tmp/ethos-inspect-serial.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Check QEMU monitor process",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"ps -ef | grep '[q]emu-system-x86_64'; ls -l /tmp/ethos-qemu.sock /tmp/ethos-inspect-serial.log; cat /tmp/ethos-inspect-serial.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Query active VGA memory",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"printf 'xp /16hx 0xb8000\\n' | socat -T 1 - UNIX-CONNECT:/tmp/ethos-qemu.sock"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Restart QEMU VGA inspection",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"kill 96755 2>/dev/null || true; rm -f /tmp/ethos-qmp.sock /tmp/ethos-qmp-serial.log; qemu-system-x86_64 -M q35 -m 512M -cdrom build/ethos.iso -boot d -serial file:/tmp/ethos-qmp-serial.log -display none -qmp unix:/tmp/ethos-qmp.sock,server,nowait -no-reboot -no-shutdown -daemonize; ls -l /tmp/ethos-qmp.sock"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Read VGA through QMP",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"printf '{\"execute\":\"qmp_capabilities\"}\\r\\n{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"info vga\"}}\\r\\n{\"execute\":\"human-monitor-command\",\"arguments\":{\"command-line\":\"xp /16hx 0xb8000\"}}\\r\\n{\"execute\":\"quit\"}\\r\\n' | socat -T 2 - UNIX-CONNECT:/tmp/ethos-qmp.sock"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build framebuffer text console",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Build EthOS framebuffer ISO",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Convert VGA screenshot",
+			"type": "shell",
+			"command": "convert",
+			"args": [
+				"/tmp/ethos-framebuffer-final.ppm",
+				"/tmp/ethos-framebuffer-final.png"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Check framebuffer boot log",
+			"type": "shell",
+			"command": "cat",
+			"args": [
+				"/tmp/ethos-framebuffer-serial.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Compile RAMFS module",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B",
+				"obj/fs/ramfs.c.o"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Recompile RAMFS module",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B",
+				"obj/fs/ramfs.c.o"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build integrated RAMFS",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Build RAMFS boot ISO",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify RAMFS in QEMU",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"rm -f /tmp/ethos-ramfs-serial.log; timeout 8s qemu-system-x86_64 -M q35 -m 512M -cdrom build/ethos.iso -boot d -serial file:/tmp/ethos-ramfs-serial.log -display none -monitor none -no-reboot -no-shutdown; cat /tmp/ethos-ramfs-serial.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build and test RAMFS",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"./scripts/build.sh && rm -f /tmp/ethos-ramfs-final.log; timeout 8s qemu-system-x86_64 -M q35 -m 512M -cdrom build/ethos.iso -boot d -serial file:/tmp/ethos-ramfs-final.log -display none -monitor none -no-reboot -no-shutdown; cat /tmp/ethos-ramfs-final.log"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Final EthOS build",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check RAMFS diff",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"diff",
+				"--check"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Compile keyboard shell",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B",
+				"obj/input/keyboard.c.o",
+				"obj/shell/shell.c.o",
+				"obj/limine/boot.c.o"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build shell ELF support",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Rebuild shell ELF support",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Build interactive shell ISO",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Read shell serial output",
+			"type": "shell",
+			"command": "cat",
+			"args": [
+				"/tmp/ethos-shell-serial.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Convert shell screenshot",
+			"type": "shell",
+			"command": "convert",
+			"args": [
+				"/tmp/ethos-shell-screen.ppm",
+				"/tmp/ethos-shell-screen.png"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect command ELF",
+			"type": "shell",
+			"command": "readelf",
+			"args": [
+				"-h",
+				"-l",
+				"bin/commands/hello.elf"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect Limine module config",
+			"type": "shell",
+			"command": "cat",
+			"args": [
+				"boot/limine/limine.conf"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Check staged command file",
+			"type": "shell",
+			"command": "ls",
+			"args": [
+				"-l",
+				"root/boot/bin/hello.elf",
+				"bin/commands/hello.elf"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Rebuild command ELF loader",
+			"type": "shell",
+			"command": "make",
+			"args": [
+				"-B"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Rebuild shell test ISO",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Read binary execution output",
+			"type": "shell",
+			"command": "cat",
+			"args": [
+				"/tmp/ethos-shell-fixed.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Convert shell test image",
+			"type": "shell",
+			"command": "convert",
+			"args": [
+				"/tmp/ethos-shell-fixed.ppm",
+				"/tmp/ethos-shell-fixed.png"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build user exception diagnostics",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Read user fault report",
+			"type": "shell",
+			"command": "cat",
+			"args": [
+				"/tmp/ethos-user-fault.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Convert user fault screenshot",
+			"type": "shell",
+			"command": "convert",
+			"args": [
+				"/tmp/ethos-user-fault.ppm",
+				"/tmp/ethos-user-fault.png"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build execution tracing",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Read ELF execution trace",
+			"type": "shell",
+			"command": "cat",
+			"args": [
+				"/tmp/ethos-execution-trace.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect actual execution trace",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-execution-trace.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build scheduler diagnostics",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Read timer startup trace",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-scheduler-trace.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Resolve shell instruction",
+			"type": "shell",
+			"command": "addr2line",
+			"args": [
+				"-e",
+				"bin/ethos",
+				"-f",
+				"-C",
+				"0xffffffff800028f9"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect kernel interrupt code",
+			"type": "shell",
+			"command": "objdump",
+			"args": [
+				"-d",
+				"--start-address=0xffffffff800028c0",
+				"--stop-address=0xffffffff80002930",
+				"bin/ethos"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build APIC routing fix",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check APIC routing logs",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"15",
+				"/tmp/ethos-apic-test.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build explicit APIC mapping",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check APIC fixed boot",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-apic-fixed.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Read command execution result",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"25",
+				"/tmp/ethos-apic-fixed.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Resolve stuck kernel RIP",
+			"type": "shell",
+			"command": "addr2line",
+			"args": [
+				"-e",
+				"bin/ethos",
+				"-f",
+				"-C",
+				"0xffffffff80004290"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect initial thread assembly",
+			"type": "shell",
+			"command": "objdump",
+			"args": [
+				"-d",
+				"--start-address=0xffffffff80004260",
+				"--stop-address=0xffffffff800042c0",
+				"bin/ethos"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Read current kernel trace",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"25",
+				"/tmp/ethos-apic-fixed.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Locate scheduler stack symbols",
+			"type": "shell",
+			"command": "nm",
+			"args": [
+				"-n",
+				"bin/ethos"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Disassemble context restore",
+			"type": "shell",
+			"command": "objdump",
+			"args": [
+				"-d",
+				"--start-address=0xffffffff8000460d",
+				"--stop-address=0xffffffff8000468c",
+				"bin/ethos"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build 22-word context frames",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check frame-fixed boot",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-context-fixed.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build IRQ entry trace",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Read IRQ diagnostic log",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-irq-entry.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Resolve post-iret fault",
+			"type": "shell",
+			"command": "addr2line",
+			"args": [
+				"-e",
+				"bin/ethos",
+				"-f",
+				"-C",
+				"0xffffffff80001461"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build kernel mode frame fix",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check final shell startup",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"15",
+				"/tmp/ethos-shell-final.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify hello binary execution",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"30",
+				"/tmp/ethos-shell-final.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Locate user transition stop",
+			"type": "shell",
+			"command": "objdump",
+			"args": [
+				"-d",
+				"--start-address=0xffffffff800042b0",
+				"--stop-address=0xffffffff80004320",
+				"bin/ethos"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Locate latest thread frame",
+			"type": "shell",
+			"command": "nm",
+			"args": [
+				"-n",
+				"bin/ethos"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build full user context",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check 22-frame boot log",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-shell-22-frame.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify command syscalls",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"30",
+				"/tmp/ethos-shell-22-frame.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect hello ELF instructions",
+			"type": "shell",
+			"command": "objdump",
+			"args": [
+				"-d",
+				"-s",
+				"bin/commands/hello.elf"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build syscall register preservation",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check syscall boot state",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"15",
+				"/tmp/ethos-hello-success.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify hello syscall loop",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"30",
+				"/tmp/ethos-hello-success.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build final interactive shell",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify final startup",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"15",
+				"/tmp/ethos-shell-final-verify.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify final hello result",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-shell-final-verify.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Convert final shell screenshot",
+			"type": "shell",
+			"command": "convert",
+			"args": [
+				"/tmp/ethos-shell-final-verify.ppm",
+				"/tmp/ethos-shell-final-verify.png"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Check final patch whitespace",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"diff",
+				"--check"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Check final shell return state",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"25",
+				"/tmp/ethos-shell-final-verify.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Final diff whitespace check",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"diff",
+				"--check"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build blocking shell execution",
+			"type": "shell",
+			"command": "./scripts/build.sh",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check waited command output",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"20",
+				"/tmp/ethos-shell-wait.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Convert shell wait screenshot",
+			"type": "shell",
+			"command": "convert",
+			"args": [
+				"/tmp/ethos-shell-wait.ppm",
+				"/tmp/ethos-shell-wait.png"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build auto-discovery shell ISO",
+			"type": "shell",
+			"command": "sh",
+			"args": [
+				"-c",
+				"bash -n scripts/build.sh && ./scripts/build.sh && cat root/boot/limine/limine.conf && ls -l root/boot/bin"
+			],
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify final auto command",
+			"type": "shell",
+			"command": "tail",
+			"args": [
+				"-n",
+				"15",
+				"/tmp/ethos-autodiscovery-final.log"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Convert final command screen",
+			"type": "shell",
+			"command": "convert",
+			"args": [
+				"/tmp/ethos-autodiscovery-final.ppm",
+				"/tmp/ethos-autodiscovery-final.png"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Check final shell diff",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"diff",
+				"--check"
+			],
+			"problemMatcher": []
+		}
+	]
+}
