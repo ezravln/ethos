@@ -1,14 +1,398 @@
 #include <shell/shell.h>
 #include <console/vga.h>
+#include <fs/ramfs.h>
 #include <input/keyboard.h>
 #include <proc/process.h>
+#include <sched/scheduler.h>
 #include <stddef.h>
 
 #define SHELL_LINE_MAX 127U
+#define SHELL_ARGUMENT_MAX 64U
 
 static char command_line[SHELL_LINE_MAX + 1U];
 static size_t command_length;
 static bool initialized;
+
+static bool strings_equal(const char *left, const char *right)
+{
+  size_t index = 0;
+  while (left[index] != '\0' && right[index] != '\0')
+  {
+    if (left[index] != right[index])
+    {
+      return false;
+    }
+    index++;
+  }
+  return left[index] == right[index];
+}
+
+static bool resolve_path(const char *input, char output[RAMFS_PATH_MAX + 1U])
+{
+  if (input == 0 || input[0] == '\0')
+  {
+    return false;
+  }
+  size_t output_length = 1U;
+  size_t input_position = 0;
+  output[0] = '/';
+
+  while (input[input_position] != '\0')
+  {
+    while (input[input_position] == '/')
+    {
+      input_position++;
+    }
+    if (input[input_position] == '\0')
+    {
+      break;
+    }
+
+    size_t component_start = input_position;
+    while (input[input_position] != '\0' && input[input_position] != '/')
+    {
+      input_position++;
+    }
+    size_t component_length = input_position - component_start;
+    if (component_length == 1U && input[component_start] == '.')
+    {
+      continue;
+    }
+    if (component_length == 2U && input[component_start] == '.' &&
+        input[component_start + 1U] == '.')
+    {
+      return false;
+    }
+
+    size_t separator = output_length > 1U ? 1U : 0U;
+    if (output_length + separator > RAMFS_PATH_MAX ||
+      component_length > RAMFS_PATH_MAX - output_length - separator)
+    {
+      return false;
+    }
+    if (separator != 0U)
+    {
+      output[output_length++] = '/';
+    }
+    for (size_t index = 0; index < component_length; index++)
+    {
+      output[output_length++] = input[component_start + index];
+    }
+  }
+  output[output_length] = '\0';
+  return true;
+}
+
+static bool path_parent_matches(const char *path, const char *directory,
+    const char **name)
+{
+  size_t directory_length = 0;
+  while (directory[directory_length] != '\0')
+  {
+    directory_length++;
+  }
+  size_t prefix_length = directory_length;
+  if (directory_length == 1U && directory[0] == '/')
+  {
+    prefix_length = 0;
+  }
+  for (size_t index = 0; index < prefix_length; index++)
+  {
+    if (path[index] != directory[index])
+    {
+      return false;
+    }
+  }
+  size_t name_start = prefix_length;
+  if (prefix_length != 0)
+  {
+    if (path[name_start] != '/')
+    {
+      return false;
+    }
+    name_start++;
+  }
+  else if (path[0] == '/')
+  {
+    name_start = 1U;
+  }
+  if (path[name_start] == '\0')
+  {
+    return false;
+  }
+  for (size_t index = name_start; path[index] != '\0'; index++)
+  {
+    if (path[index] == '/')
+    {
+      return false;
+    }
+  }
+  *name = &path[name_start];
+  return true;
+}
+
+static void print_basename(const char *path)
+{
+  size_t length = 0;
+  size_t start = 0;
+  while (path[length] != '\0')
+  {
+    if (path[length] == '/')
+    {
+      start = length + 1U;
+    }
+    length++;
+  }
+  vga_write(&path[start]);
+}
+
+static bool shell_list_directory(const char *path)
+{
+  if (!ramfs_is_directory(path))
+  {
+    struct ramfs_file_info file;
+    if (ramfs_stat(path, &file))
+    {
+      print_basename(path);
+      vga_write_char('\n');
+      return true;
+    }
+    vga_write("ls: no such file or directory\n");
+    return false;
+  }
+
+  bool found = false;
+  size_t count = ramfs_directory_count();
+  for (size_t index = 0; index < count; index++)
+  {
+    struct ramfs_directory_info directory;
+    const char *name;
+    if (ramfs_directory_get_at(index, &directory) &&
+        path_parent_matches(directory.path, path, &name))
+    {
+      vga_write(name);
+      vga_write("/  ");
+      found = true;
+    }
+  }
+  count = ramfs_count();
+  for (size_t index = 0; index < count; index++)
+  {
+    struct ramfs_file_info file;
+    const char *name;
+    if (ramfs_get_at(index, &file) &&
+        path_parent_matches(file.path, path, &name))
+    {
+      vga_write(name);
+      vga_write("  ");
+      found = true;
+    }
+  }
+  if (found)
+  {
+    vga_write_char('\n');
+  }
+  return true;
+}
+
+static bool shell_cat_file(const char *path)
+{
+  uint8_t contents[RAMFS_FILE_CAPACITY];
+  size_t bytes_read;
+  if (!ramfs_read(path, 0, contents, sizeof(contents), &bytes_read))
+  {
+    vga_write("cat: cannot read file\n");
+    return false;
+  }
+  for (size_t index = 0; index < bytes_read; index++)
+  {
+    vga_write_char((char)contents[index]);
+  }
+  if (bytes_read != 0 && contents[bytes_read - 1U] != '\n')
+  {
+    vga_write_char('\n');
+  }
+  return true;
+}
+
+static bool execute_builtin(size_t argument_count, char *arguments[])
+{
+  const char *command = arguments[0];
+  if (strings_equal(command, "echo"))
+  {
+    for (size_t index = 1; index < argument_count; index++)
+    {
+      if (index != 1U)
+      {
+        vga_write_char(' ');
+      }
+      vga_write(arguments[index]);
+    }
+    vga_write_char('\n');
+    return true;
+  }
+  if (strings_equal(command, "help"))
+  {
+    vga_write("Built-ins: help echo ls cat pwd clear mkdir touch rm\n");
+    vga_write("External ELF command: hello\n");
+    return true;
+  }
+  if (strings_equal(command, "pwd"))
+  {
+    vga_write("/\n");
+    return true;
+  }
+  if (strings_equal(command, "clear"))
+  {
+    vga_clear();
+    return true;
+  }
+  if (strings_equal(command, "ls"))
+  {
+    if (argument_count > 2U)
+    {
+      vga_write("usage: ls [path]\n");
+      return true;
+    }
+    char path[RAMFS_PATH_MAX + 1U];
+    if (!resolve_path(argument_count == 2U ? arguments[1] : "/", path))
+    {
+      vga_write("ls: invalid path\n");
+    }
+    else
+    {
+      shell_list_directory(path);
+    }
+    return true;
+  }
+  if (strings_equal(command, "cat"))
+  {
+    if (argument_count < 2U)
+    {
+      vga_write("usage: cat path...\n");
+      return true;
+    }
+    for (size_t index = 1; index < argument_count; index++)
+    {
+      char path[RAMFS_PATH_MAX + 1U];
+      if (!resolve_path(arguments[index], path))
+      {
+        vga_write("cat: invalid path\n");
+      }
+      else
+      {
+        shell_cat_file(path);
+      }
+    }
+    return true;
+  }
+  if (strings_equal(command, "mkdir") || strings_equal(command, "touch") ||
+      strings_equal(command, "rm"))
+  {
+    if (argument_count != 2U)
+    {
+      vga_write("usage: mkdir|touch|rm path\n");
+      return true;
+    }
+    char path[RAMFS_PATH_MAX + 1U];
+    if (!resolve_path(arguments[1], path))
+    {
+      vga_write("error: invalid path\n");
+    }
+    else if (strings_equal(command, "mkdir"))
+    {
+      if (!ramfs_mkdir(path))
+      {
+        vga_write("mkdir: cannot create directory\n");
+      }
+    }
+    else if (strings_equal(command, "touch"))
+    {
+      if (!ramfs_create(path))
+      {
+        vga_write("touch: cannot create file\n");
+      }
+    }
+    else if (!ramfs_remove(path))
+    {
+      vga_write("rm: cannot remove file\n");
+    }
+    return true;
+  }
+  return false;
+}
+
+static bool parse_command_line(char *line, size_t *argument_count,
+    char *arguments[SHELL_ARGUMENT_MAX])
+{
+  size_t read_position = 0;
+  size_t write_position = 0;
+  *argument_count = 0;
+
+  while (line[read_position] != '\0')
+  {
+    while (line[read_position] == ' ' || line[read_position] == '\t')
+    {
+      read_position++;
+    }
+    if (line[read_position] == '\0')
+    {
+      break;
+    }
+    if (*argument_count == SHELL_ARGUMENT_MAX)
+    {
+      return false;
+    }
+
+    arguments[(*argument_count)++] = &line[write_position];
+    char quote = '\0';
+    while (line[read_position] != '\0')
+    {
+      char character = line[read_position++];
+      if (quote != '\0')
+      {
+        if (character == quote)
+        {
+          quote = '\0';
+          continue;
+        }
+        if (character == '\\' && quote == '"' &&
+            line[read_position] != '\0')
+        {
+          character = line[read_position++];
+        }
+        line[write_position++] = character;
+        continue;
+      }
+      if (character == '\'' || character == '"')
+      {
+        quote = character;
+      }
+      else if (character == '\\')
+      {
+        if (line[read_position] == '\0')
+        {
+          return false;
+        }
+        line[write_position++] = line[read_position++];
+      }
+      else if (character == ' ' || character == '\t')
+      {
+        break;
+      }
+      else
+      {
+        line[write_position++] = character;
+      }
+    }
+    if (quote != '\0')
+    {
+      return false;
+    }
+    line[write_position++] = '\0';
+  }
+  return true;
+}
 
 bool shell_init(void)
 {
@@ -24,27 +408,19 @@ bool shell_init(void)
 static void execute_command_line(void)
 {
   command_line[command_length] = '\0';
-  size_t first = 0;
-  while (command_line[first] == ' ' || command_line[first] == '\t')
+  size_t argument_count;
+  char *arguments[SHELL_ARGUMENT_MAX];
+  if (!parse_command_line(command_line, &argument_count, arguments))
   {
-    first++;
+    vga_write("syntax error: invalid quoting or too many arguments\n");
   }
-  size_t end = first;
-  while (command_line[end] != '\0' && command_line[end] != ' ' &&
-      command_line[end] != '\t')
+  else if (argument_count != 0)
   {
-    end++;
-  }
-
-  if (end > first)
-  {
-    char saved = command_line[end];
-    command_line[end] = '\0';
-    if (!process_exec_command(&command_line[first]))
+    if (!execute_builtin(argument_count, arguments) &&
+        !process_exec_command(argument_count, arguments))
     {
       vga_write("command not found or invalid binary\n");
     }
-    command_line[end] = saved;
   }
   command_length = 0;
 }
@@ -59,10 +435,21 @@ __attribute__((noreturn)) void shell_run(void)
     }
   }
 
-  vga_write("Type a command name to run its binary.\n");
+  vga_write("Run a command; quote arguments with spaces.\n");
   vga_write("ethos> ");
+  uint64_t cursor_last_tick = scheduler_ticks();
+  bool cursor_visible = true;
+  vga_set_cursor_visible(cursor_visible);
   for (;;)
   {
+    uint64_t current_tick = scheduler_ticks();
+    if (current_tick - cursor_last_tick >= 50U)
+    {
+      cursor_last_tick = current_tick;
+      cursor_visible = !cursor_visible;
+      vga_set_cursor_visible(cursor_visible);
+    }
+
     char character = keyboard_poll_char();
     if (character == 0)
     {
@@ -70,6 +457,9 @@ __attribute__((noreturn)) void shell_run(void)
       continue;
     }
 
+    cursor_last_tick = current_tick;
+    cursor_visible = true;
+    vga_set_cursor_visible(cursor_visible);
     if (character == '\n')
     {
       vga_write_char('\n');

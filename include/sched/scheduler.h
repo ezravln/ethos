@@ -48,6 +48,7 @@ bool thread_create_user(
 );
 
 bool scheduler_start(void);
+uint64_t scheduler_ticks(void);
 size_t scheduler_task_count(void);
 bool scheduler_task_get_at(
   size_t index,

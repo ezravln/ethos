@@ -65,10 +65,29 @@ The current kernel includes:
 - Round-robin kernel threads and initial ring-3 process support
 - SYSCALL/SYSRET setup with exit and character output calls
 - Limine framebuffer text console and serial logging
-- Fixed-capacity in-memory filesystem with create, read, write, remove, stat, and root listing
+- Fixed-capacity in-memory filesystem with nested directories, protected system paths, and file operations
 - Interactive keyboard shell that resolves commands from Limine-loaded ELF modules
 
-The current RAMFS holds up to 16 root-level files of 4 KiB each and is cleared at reboot. The shell currently accepts command names without arguments. Each `commands/<name>.c` is built as a separate static ELF64 binary and automatically loaded by Limine under `<name>`; adding a command does not require editing a command table or Limine config. Persistent filesystems require a block-device driver and are still planned. Remaining work includes richer ELF loading, process/address-space teardown, broader device support, and user-space applications.
+### Filesystem Layout
+
+The initial RAMFS directory tree separates system tools, applications, libraries, and user data:
+
+| Path | Purpose |
+| --- | --- |
+| `/bin` | Commands available system-wide |
+| `/sbin` | System and kernel administration tools |
+| `/usr/bin` | User-space applications loaded as ELF modules |
+| `/boot` | Boot-critical kernel and Limine files; read-only in RAMFS |
+| `/lib` | Shared libraries |
+| `/lib/kernel` | Libraries reserved for kernel components |
+| `/usr/lib` | Shared libraries for user applications |
+| `/home/ethos` | Writable home directory |
+| `/home/ethos/.local/bin` | Applications owned by the user |
+| `/home/ethos/.local/lib` | Libraries owned by the user |
+| `/home/ethos/Documents`, `/Downloads`, `/Projects` | Work and personal files |
+| `/home/ethos/Media/{Music,Pictures,Videos}` | Media files |
+
+The RAMFS currently stores up to 16 files of 4 KiB each, supports nested paths and directory creation, and is cleared at reboot. System-owned directories are protected from writes. The ISO staging tree mirrors these paths; its `/boot` contents are read-only because the image is booted from the ISO. The interactive shell includes `echo`, `ls`, `cat`, `pwd`, `clear`, `mkdir`, `touch`, `rm`, and `help` built-ins. Paths are absolute or relative to `/`, since a current working directory is not implemented yet. It tokenizes command arguments, supports single- and double-quoted arguments and backslash escaping, then passes `argc`/`argv` to external ELF commands. It is not GNU Bash: variable expansion, pipelines, redirection, scripting, and other shell syntax are not implemented. Each `commands/<name>.c` is built as a separate static ELF64 binary and automatically loaded by Limine from `/usr/bin/<name>.elf` under the command name; adding a command does not require editing a command table or Limine config. Persistent user files require a writable block-device filesystem and are still planned. Remaining work includes richer ELF loading, process/address-space teardown, broader device support, and user-space applications.
 
 The list may change as development progresses.
 

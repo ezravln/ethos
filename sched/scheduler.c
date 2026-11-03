@@ -69,6 +69,7 @@ static uint8_t thread_stacks[ETHOS_MAX_THREADS][ETHOS_THREAD_STACK_SIZE]
 static uint32_t current_thread;
 static bool scheduler_initialized;
 static bool scheduler_started;
+static volatile uint64_t timer_ticks;
 static uint64_t user_fault_count;
 static uint64_t next_task_id = 1;
 static uint64_t kernel_address_space;
@@ -435,11 +436,17 @@ bool scheduler_task_get_at(size_t index, struct scheduler_task_info *info)
 
 uintptr_t scheduler_on_timer(uintptr_t interrupted_stack)
 {
+  timer_ticks++;
   if (!scheduler_initialized || !scheduler_started)
   {
     return interrupted_stack;
   }
   return choose_next_thread(interrupted_stack, true);
+}
+
+uint64_t scheduler_ticks(void)
+{
+  return timer_ticks;
 }
 
 uintptr_t scheduler_exit_current(void)

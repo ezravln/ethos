@@ -92,7 +92,27 @@ rm -rf "$ISO_ROOT/boot" "$ISO_ROOT/EFI"
 
 mkdir -p \
   "$ISO_ROOT/boot/limine" \
-  "$ISO_ROOT/EFI/BOOT"
+  "$ISO_ROOT/EFI/BOOT" \
+  "$ISO_ROOT/bin" \
+  "$ISO_ROOT/sbin" \
+  "$ISO_ROOT/lib/kernel" \
+  "$ISO_ROOT/usr/bin" \
+  "$ISO_ROOT/usr/lib" \
+  "$ISO_ROOT/home/ethos/Desktop" \
+  "$ISO_ROOT/home/ethos/Documents" \
+  "$ISO_ROOT/home/ethos/Downloads" \
+  "$ISO_ROOT/home/ethos/Media/Music" \
+  "$ISO_ROOT/home/ethos/Media/Pictures" \
+  "$ISO_ROOT/home/ethos/Media/Videos" \
+  "$ISO_ROOT/home/ethos/Projects" \
+  "$ISO_ROOT/home/ethos/Public" \
+  "$ISO_ROOT/home/ethos/Templates" \
+  "$ISO_ROOT/home/ethos/.cache" \
+  "$ISO_ROOT/home/ethos/.config" \
+  "$ISO_ROOT/home/ethos/.local/bin" \
+  "$ISO_ROOT/home/ethos/.local/lib" \
+  "$ISO_ROOT/home/ethos/.local/share" \
+  "$ISO_ROOT/home/ethos/Temporary"
 
 # ============================================================
 # Stage Ethos kernel
@@ -104,9 +124,8 @@ install -m 0644 \
   "$KERNEL" \
   "$ISO_ROOT/boot/ethos"
 
-mkdir -p "$ISO_ROOT/boot/bin"
 if [[ ${#COMMAND_BINARIES[@]} -gt 0 ]]; then
-  install -m 0644 "${COMMAND_BINARIES[@]}" "$ISO_ROOT/boot/bin/"
+  install -m 0644 "${COMMAND_BINARIES[@]}" "$ISO_ROOT/usr/bin/"
 fi
 
 # ============================================================
@@ -123,7 +142,7 @@ for command_binary in "${COMMAND_BINARIES[@]}"; do
   command_name="$(basename -- "$command_binary" .elf)"
   [[ "$command_name" =~ ^[A-Za-z0-9._-]+$ ]] ||
     die "Invalid command binary name: $command_name"
-  printf '    module_path: boot():/boot/bin/%s.elf\n    module_string: %s\n' \
+  printf '    module_path: boot():/usr/bin/%s.elf\n    module_string: %s\n' \
     "$command_name" "$command_name" \
     >> "$ISO_ROOT/boot/limine/limine.conf"
 done

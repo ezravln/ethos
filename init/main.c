@@ -52,8 +52,23 @@ void kmain(void) {
   static const char ramfs_test_data[] = "Ethos RAMFS is online.\n";
   char ramfs_verify_data[sizeof(ramfs_test_data)] = {0};
   size_t ramfs_bytes_read = 0;
-    struct ramfs_file_info ramfs_info;
-  if (!ramfs_create("/hello.txt") ||
+  struct ramfs_file_info ramfs_info;
+  struct ramfs_directory_info directory_info;
+  if (!ramfs_is_directory("/bin") ||
+      !ramfs_is_directory("/sbin") ||
+      !ramfs_is_directory("/lib/kernel") ||
+      !ramfs_is_directory("/home/ethos/Documents") ||
+      !ramfs_is_directory("/home/ethos/Media/Pictures") ||
+      ramfs_directory_count() != 29U ||
+      !ramfs_directory_get_at(0, &directory_info) ||
+      memcmp(directory_info.path, "/", sizeof("/")) != 0 ||
+      directory_info.read_only ||
+      ramfs_create("/boot/modified") ||
+      !ramfs_mkdir("/home/ethos/Documents/Notes") ||
+      !ramfs_is_directory("/home/ethos/Documents/Notes") ||
+      !ramfs_create("/home/ethos/Documents/layout-check.tmp") ||
+      !ramfs_remove("/home/ethos/Documents/layout-check.tmp") ||
+      !ramfs_create("/hello.txt") ||
       ramfs_create("/hello.txt") ||
       !ramfs_write("/hello.txt", 0, ramfs_test_data, sizeof(ramfs_test_data)) ||
       !ramfs_read("/hello.txt", 0, ramfs_verify_data,
@@ -63,7 +78,7 @@ void kmain(void) {
       !ramfs_stat("/hello.txt", &ramfs_info) ||
       ramfs_info.size != sizeof(ramfs_test_data) ||
       !ramfs_get_at(0, &ramfs_info) ||
-      memcmp(ramfs_info.name, "hello.txt", sizeof("hello.txt")) != 0 ||
+      memcmp(ramfs_info.path, "/hello.txt", sizeof("/hello.txt")) != 0 ||
       ramfs_count() != 1 ||
       !ramfs_create("/remove.tmp") ||
       !ramfs_remove("/remove.tmp") ||
@@ -76,7 +91,7 @@ void kmain(void) {
   serial_write("SUCCESS >> RAMFS create/write/read verified\n");
   if (vga_is_initialized())
   {
-    vga_write("RAMFS ready: /hello.txt\n");
+    vga_write("RAMFS ready: /home/ethos\n");
   }
   serial_write("SUCCESS >> Kernel subsystems initialized\n");
   if (!scheduler_start())

@@ -31,7 +31,7 @@ bool process_create(
 		uint64_t address_space_root,
 		uint64_t *process_id
 );
-bool process_exec_command(const char *command);
+bool process_exec_command(size_t argument_count, char *const arguments[]);
 bool process_wait(uint64_t process_id);
 size_t process_count(void);
 bool process_get_at(size_t index, struct process_info *info);

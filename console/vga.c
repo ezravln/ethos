@@ -4,9 +4,10 @@
 
 #define FONT_WIDTH 5U
 #define FONT_HEIGHT 7U
-#define FONT_SCALE 2U
+#define FONT_SCALE_X 2U
+#define FONT_SCALE_Y 2U
 #define CELL_WIDTH 12U
-#define CELL_HEIGHT 18U
+#define CELL_HEIGHT 16U
 
 static const uint8_t font[36][FONT_HEIGHT] = {
   {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11},
@@ -47,6 +48,35 @@ static const uint8_t font[36][FONT_HEIGHT] = {
   {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E}
 };
 
+static const uint8_t lowercase_font[26][FONT_HEIGHT] = {
+  {0x00, 0x0E, 0x01, 0x0F, 0x11, 0x13, 0x0D},
+  {0x10, 0x10, 0x1E, 0x11, 0x11, 0x11, 0x1E},
+  {0x00, 0x0E, 0x10, 0x10, 0x10, 0x11, 0x0E},
+  {0x01, 0x01, 0x0F, 0x11, 0x11, 0x13, 0x0D},
+  {0x00, 0x0E, 0x11, 0x1F, 0x10, 0x11, 0x0E},
+  {0x06, 0x09, 0x08, 0x1C, 0x08, 0x08, 0x08},
+  {0x00, 0x0D, 0x13, 0x11, 0x0F, 0x01, 0x0E},
+  {0x10, 0x10, 0x1E, 0x11, 0x11, 0x11, 0x11},
+  {0x04, 0x00, 0x0C, 0x04, 0x04, 0x04, 0x0E},
+  {0x02, 0x00, 0x06, 0x02, 0x02, 0x12, 0x0C},
+  {0x10, 0x10, 0x12, 0x14, 0x18, 0x14, 0x12},
+  {0x0C, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E},
+  {0x00, 0x1A, 0x15, 0x15, 0x15, 0x15, 0x15},
+  {0x00, 0x1E, 0x11, 0x11, 0x11, 0x11, 0x11},
+  {0x00, 0x0E, 0x11, 0x11, 0x11, 0x11, 0x0E},
+  {0x00, 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10},
+  {0x00, 0x0D, 0x13, 0x11, 0x0F, 0x01, 0x01},
+  {0x00, 0x16, 0x19, 0x10, 0x10, 0x10, 0x10},
+  {0x00, 0x0F, 0x10, 0x0E, 0x01, 0x01, 0x1E},
+  {0x08, 0x08, 0x1C, 0x08, 0x08, 0x09, 0x06},
+  {0x00, 0x11, 0x11, 0x11, 0x11, 0x13, 0x0D},
+  {0x00, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04},
+  {0x00, 0x11, 0x11, 0x11, 0x15, 0x15, 0x0A},
+  {0x00, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11},
+  {0x00, 0x11, 0x11, 0x11, 0x0F, 0x01, 0x0E},
+  {0x00, 0x1F, 0x02, 0x04, 0x08, 0x10, 0x1F}
+};
+
 static const uint32_t palette[16] = {
   0x000000, 0x0000AA, 0x00AA00, 0x00AAAA,
   0xAA0000, 0xAA00AA, 0xAA5500, 0xAAAAAA,
@@ -59,7 +89,11 @@ static uint32_t foreground;
 static uint32_t background;
 static uint64_t cursor_x;
 static uint64_t cursor_y;
+static bool cursor_visible;
 static bool console_initialized;
+static uint32_t utf8_codepoint;
+static uint32_t utf8_minimum;
+static uint8_t utf8_remaining;
 
 static uint32_t color_component(uint8_t value, uint8_t size, uint8_t shift)
 {
@@ -103,15 +137,143 @@ static void fill_cell(uint64_t cell_x, uint64_t cell_y, uint32_t color)
   }
 }
 
-static uint8_t glyph_row(char character, uint64_t row)
+static uint32_t latin1_base(uint32_t codepoint)
 {
-  if (character >= 'a' && character <= 'z')
+  if ((codepoint >= 0x00C0U && codepoint <= 0x00C5U) ||
+      (codepoint >= 0x00E0U && codepoint <= 0x00E5U))
   {
-    character = (char)(character - 'a' + 'A');
+    return codepoint < 0x00E0U ? 'A' : 'a';
+  }
+  if (codepoint == 0x00C7U || codepoint == 0x00E7U)
+  {
+    return codepoint == 0x00C7U ? 'C' : 'c';
+  }
+  if ((codepoint >= 0x00C8U && codepoint <= 0x00CBU) ||
+      (codepoint >= 0x00E8U && codepoint <= 0x00EBU))
+  {
+    return codepoint < 0x00E0U ? 'E' : 'e';
+  }
+  if ((codepoint >= 0x00CCU && codepoint <= 0x00CFU) ||
+      (codepoint >= 0x00ECU && codepoint <= 0x00EFU))
+  {
+    return codepoint < 0x00E0U ? 'I' : 'i';
+  }
+  if (codepoint == 0x00D1U || codepoint == 0x00F1U)
+  {
+    return codepoint == 0x00D1U ? 'N' : 'n';
+  }
+  if ((codepoint >= 0x00D2U && codepoint <= 0x00D6U) ||
+      (codepoint >= 0x00F2U && codepoint <= 0x00F6U))
+  {
+    return codepoint < 0x00E0U ? 'O' : 'o';
+  }
+  if ((codepoint >= 0x00D9U && codepoint <= 0x00DCU) ||
+      (codepoint >= 0x00F9U && codepoint <= 0x00FCU))
+  {
+    return codepoint < 0x00E0U ? 'U' : 'u';
+  }
+  if (codepoint == 0x00DDU || (codepoint >= 0x00FDU && codepoint <= 0x00FFU))
+  {
+    return codepoint == 0x00DDU ? 'Y' : 'y';
+  }
+  switch (codepoint)
+  {
+    case 0x00C6U: return 'A';
+    case 0x00D0U: return 'D';
+    case 0x00D8U: return 'O';
+    case 0x00DEU: return 'P';
+    case 0x00DFU: return 'b';
+    case 0x00E6U: return 'a';
+    case 0x00F0U: return 'd';
+    case 0x00F8U: return 'o';
+    case 0x00FEU: return 'p';
+    case 0x00D7U: return '*';
+    case 0x00F7U: return '/';
+    default: return 0;
+  }
+}
+
+static uint8_t latin1_accent(uint32_t codepoint)
+{
+  switch (codepoint)
+  {
+    case 0x00C0U: case 0x00E0U: case 0x00C8U: case 0x00E8U:
+    case 0x00CCU: case 0x00ECU: case 0x00D2U: case 0x00F2U:
+    case 0x00D9U: case 0x00F9U:
+      return 1U;
+    case 0x00C1U: case 0x00E1U: case 0x00C9U: case 0x00E9U:
+    case 0x00CDU: case 0x00EDU: case 0x00D3U: case 0x00F3U:
+    case 0x00DAU: case 0x00FAU: case 0x00DDU: case 0x00FDU:
+      return 2U;
+    case 0x00C2U: case 0x00E2U: case 0x00CAU: case 0x00EAU:
+    case 0x00CEU: case 0x00EEU: case 0x00D4U: case 0x00F4U:
+    case 0x00DBU: case 0x00FBU:
+      return 3U;
+    case 0x00C3U: case 0x00E3U: case 0x00D1U: case 0x00F1U:
+    case 0x00D5U: case 0x00F5U:
+      return 4U;
+    case 0x00C4U: case 0x00E4U: case 0x00CBU: case 0x00EBU:
+    case 0x00CFU: case 0x00EFU: case 0x00D6U: case 0x00F6U:
+    case 0x00DCU: case 0x00FCU: case 0x00FFU:
+      return 5U;
+    case 0x00C5U: case 0x00E5U:
+      return 6U;
+    case 0x00C7U: case 0x00E7U:
+      return 7U;
+    default:
+      return 0U;
+  }
+}
+
+static uint8_t accent_row(uint8_t accent, uint64_t row)
+{
+  static const uint8_t marks[7][FONT_HEIGHT] = {
+    {0x08, 0, 0, 0, 0, 0, 0},
+    {0x02, 0, 0, 0, 0, 0, 0},
+    {0x0A, 0, 0, 0, 0, 0, 0},
+    {0x0A, 0, 0, 0, 0, 0, 0},
+    {0x11, 0, 0, 0, 0, 0, 0},
+    {0x04, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0x08}
+  };
+  if (accent == 0U || accent > 7U || row >= FONT_HEIGHT)
+  {
+    return 0;
+  }
+  return marks[accent - 1U][row];
+}
+
+static uint8_t glyph_row(uint32_t character, uint64_t row)
+{
+  uint8_t accent = latin1_accent(character);
+  if (accent != 0U)
+  {
+    uint32_t base = latin1_base(character);
+    if (base >= 'a' && base <= 'z')
+    {
+      uint8_t bits = lowercase_font[(size_t)(base - 'a')][row];
+      return bits | accent_row(accent, row);
+    }
+    if (row == 0U)
+    {
+      return accent_row(accent, row);
+    }
+    static const uint8_t upper_rows[6] = {0, 1, 2, 3, 4, 6};
+    uint8_t bits = font[(size_t)(base - 'A')][upper_rows[row - 1U]];
+    return bits | accent_row(accent, row);
+  }
+  uint32_t base = latin1_base(character);
+  if (base != 0U)
+  {
+    character = base;
   }
   if (character >= 'A' && character <= 'Z')
   {
     return font[(size_t)(character - 'A')][row];
+  }
+  if (character >= 'a' && character <= 'z')
+  {
+    return lowercase_font[(size_t)(character - 'a')][row];
   }
   if (character >= '0' && character <= '9')
   {
@@ -120,18 +282,38 @@ static uint8_t glyph_row(char character, uint64_t row)
 
   static const uint8_t punctuation[][FONT_HEIGHT] = {
     [0] = {0, 0, 0, 0, 0, 0, 0},
-    [1] = {0, 0, 0, 0x1F, 0, 0, 0},
-    [2] = {0, 0, 0, 0, 0, 0x0C, 0x0C},
-    [3] = {0, 0x0C, 0x0C, 0, 0x0C, 0x0C, 0},
-    [4] = {0x04, 0x04, 0x04, 0, 0x04, 0x04, 0x04},
+    [1] = {0, 0, 0, 0x0E, 0, 0, 0},
+    [2] = {0, 0, 0, 0, 0, 0x04, 0x04},
+    [3] = {0, 0x04, 0x04, 0, 0, 0x04, 0x04},
+    [4] = {0, 0, 0, 0, 0, 0, 0x1F},
     [5] = {0x04, 0x04, 0x04, 0x04, 0x04, 0, 0x04},
-    [6] = {0x02, 0x04, 0x08, 0x10, 0, 0, 0},
-    [7] = {0x0C, 0x12, 0x02, 0x04, 0x04, 0, 0x04},
+    [6] = {0x01, 0x02, 0x02, 0x04, 0x08, 0x08, 0x10},
+    [7] = {0x0E, 0x11, 0x01, 0x02, 0x04, 0, 0x04},
     [8] = {0, 0, 0, 0, 0, 0x04, 0x08},
-    [9] = {0x08, 0x04, 0, 0, 0, 0, 0},
-    [10] = {0, 0x04, 0x0A, 0x11, 0, 0, 0},
+    [9] = {0x10, 0x08, 0x08, 0x04, 0x02, 0x02, 0x01},
+    [10] = {0, 0x04, 0x04, 0x1F, 0x04, 0x04, 0},
     [11] = {0x10, 0x08, 0x04, 0x02, 0x04, 0x08, 0x10},
-    [12] = {0x01, 0x02, 0x04, 0x08, 0x04, 0x02, 0x01}
+    [12] = {0x01, 0x02, 0x04, 0x08, 0x04, 0x02, 0x01},
+    [13] = {0, 0x04, 0x04, 0, 0x04, 0x04, 0x08},
+    [14] = {0x04, 0x04, 0x02, 0, 0, 0, 0},
+    [15] = {0x0A, 0x0A, 0x05, 0, 0, 0, 0},
+    [16] = {0x02, 0x04, 0x08, 0x08, 0x08, 0x04, 0x02},
+    [17] = {0x08, 0x04, 0x02, 0x02, 0x02, 0x04, 0x08},
+    [18] = {0, 0x0A, 0x04, 0x1F, 0x04, 0x0A, 0},
+    [19] = {0, 0, 0x1F, 0, 0x1F, 0, 0},
+    [20] = {0x19, 0x19, 0x02, 0x04, 0x08, 0x13, 0x13},
+    [21] = {0x0C, 0x12, 0x14, 0x08, 0x15, 0x12, 0x0D},
+    [22] = {0x0A, 0x0A, 0x1F, 0x0A, 0x1F, 0x0A, 0x0A},
+    [23] = {0x0E, 0x11, 0x17, 0x15, 0x17, 0x10, 0x0F},
+    [24] = {0x04, 0x0F, 0x14, 0x0E, 0x05, 0x1E, 0x04},
+    [25] = {0x0E, 0x08, 0x08, 0x08, 0x08, 0x08, 0x0E},
+    [26] = {0x0E, 0x02, 0x02, 0x02, 0x02, 0x02, 0x0E},
+    [27] = {0x04, 0x0A, 0x11, 0, 0, 0, 0},
+    [28] = {0, 0, 0x09, 0x16, 0, 0, 0},
+    [29] = {0x06, 0x04, 0x04, 0x18, 0x04, 0x04, 0x06},
+    [30] = {0x0C, 0x04, 0x04, 0x03, 0x04, 0x04, 0x0C},
+    [32] = {0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04},
+    [33] = {0x08, 0x04, 0, 0, 0, 0, 0}
   };
 
   switch (character)
@@ -149,14 +331,34 @@ static uint8_t glyph_row(char character, uint64_t row)
     case '+': return punctuation[10][row];
     case '>': return punctuation[11][row];
     case '<': return punctuation[12][row];
-    default: return 0x1F;
+    case ';': return punctuation[13][row];
+    case '\'': return punctuation[14][row];
+    case '"': return punctuation[15][row];
+    case '(': return punctuation[16][row];
+    case ')': return punctuation[17][row];
+    case '*': return punctuation[18][row];
+    case '=': return punctuation[19][row];
+    case '%': return punctuation[20][row];
+    case '&': return punctuation[21][row];
+    case '#': return punctuation[22][row];
+    case '@': return punctuation[23][row];
+    case '$': return punctuation[24][row];
+    case '[': return punctuation[25][row];
+    case ']': return punctuation[26][row];
+    case '^': return punctuation[27][row];
+    case '~': return punctuation[28][row];
+    case '{': return punctuation[29][row];
+    case '}': return punctuation[30][row];
+    case '|': return punctuation[32][row];
+    case '`': return punctuation[33][row];
+    default: return punctuation[7][row];
   }
 }
 
-static void draw_character(char character)
+static void draw_character(uint32_t character)
 {
   uint64_t start_x = cursor_x * CELL_WIDTH + 1U;
-  uint64_t start_y = cursor_y * CELL_HEIGHT + 2U;
+  uint64_t start_y = cursor_y * CELL_HEIGHT + 1U;
   fill_cell(cursor_x, cursor_y, background);
 
   for (uint64_t row = 0; row < FONT_HEIGHT; row++)
@@ -168,14 +370,27 @@ static void draw_character(char character)
       {
         continue;
       }
-      for (uint64_t y = 0; y < FONT_SCALE; y++)
+      for (uint64_t y = 0; y < FONT_SCALE_Y; y++)
       {
-        for (uint64_t x = 0; x < FONT_SCALE; x++)
+        for (uint64_t x = 0; x < FONT_SCALE_X; x++)
         {
-          *pixel_address(start_x + column * FONT_SCALE + x,
-              start_y + row * FONT_SCALE + y) = foreground;
+          *pixel_address(start_x + column * FONT_SCALE_X + x,
+              start_y + row * FONT_SCALE_Y + y) = foreground;
         }
       }
+    }
+  }
+}
+
+static void draw_cursor(void)
+{
+  uint64_t start_x = cursor_x * CELL_WIDTH + 1U;
+  uint64_t start_y = cursor_y * CELL_HEIGHT + CELL_HEIGHT - 2U;
+  for (uint64_t y = 0; y < 2U; y++)
+  {
+    for (uint64_t x = 0; x < CELL_WIDTH - 2U; x++)
+    {
+      *pixel_address(start_x + x, start_y + y) = foreground;
     }
   }
 }
@@ -258,6 +473,7 @@ void vga_clear(void)
   }
   cursor_x = 0;
   cursor_y = 0;
+  cursor_visible = false;
 }
 
 void vga_set_color(uint8_t foreground_index, uint8_t background_index)
@@ -268,9 +484,31 @@ void vga_set_color(uint8_t foreground_index, uint8_t background_index)
   }
   foreground = framebuffer_color(palette[foreground_index]);
   background = framebuffer_color(palette[background_index]);
+  if (cursor_visible)
+  {
+    fill_cell(cursor_x, cursor_y, background);
+    draw_cursor();
+  }
 }
 
-void vga_write_char(char character)
+void vga_set_cursor_visible(bool visible)
+{
+  if (!console_initialized || cursor_visible == visible)
+  {
+    return;
+  }
+  cursor_visible = visible;
+  if (cursor_visible)
+  {
+    draw_cursor();
+  }
+  else
+  {
+    fill_cell(cursor_x, cursor_y, background);
+  }
+}
+
+static void write_codepoint(uint32_t character)
 {
   if (!console_initialized)
   {
@@ -278,14 +516,26 @@ void vga_write_char(char character)
   }
 
   uint64_t columns = framebuffer->width / CELL_WIDTH;
+  if (cursor_visible)
+  {
+    fill_cell(cursor_x, cursor_y, background);
+  }
   if (character == '\n')
   {
     advance_line();
+    if (cursor_visible)
+    {
+      draw_cursor();
+    }
     return;
   }
   if (character == '\r')
   {
     cursor_x = 0;
+    if (cursor_visible)
+    {
+      draw_cursor();
+    }
     return;
   }
   if (character == '\b')
@@ -294,6 +544,10 @@ void vga_write_char(char character)
     {
       cursor_x--;
       draw_character(' ');
+    }
+    if (cursor_visible)
+    {
+      draw_cursor();
     }
     return;
   }
@@ -312,6 +566,63 @@ void vga_write_char(char character)
   if (cursor_x >= columns)
   {
     advance_line();
+  }
+  if (cursor_visible)
+  {
+    draw_cursor();
+  }
+}
+
+void vga_write_char(char character)
+{
+  uint8_t byte = (uint8_t)character;
+  if (utf8_remaining != 0U)
+  {
+    if ((byte & 0xC0U) == 0x80U)
+    {
+      utf8_codepoint = (utf8_codepoint << 6) | (byte & 0x3FU);
+      utf8_remaining--;
+      if (utf8_remaining == 0U)
+      {
+        uint32_t codepoint = utf8_codepoint;
+        if (codepoint < utf8_minimum || codepoint > 0x10FFFFU ||
+            (codepoint >= 0xD800U && codepoint <= 0xDFFFU))
+        {
+          codepoint = 0xFFFDU;
+        }
+        write_codepoint(codepoint);
+      }
+      return;
+    }
+    utf8_remaining = 0;
+    write_codepoint(0xFFFDU);
+  }
+
+  if (byte < 0x80U)
+  {
+    write_codepoint(byte);
+  }
+  else if (byte >= 0xC2U && byte <= 0xDFU)
+  {
+    utf8_codepoint = byte & 0x1FU;
+    utf8_minimum = 0x80U;
+    utf8_remaining = 1U;
+  }
+  else if (byte >= 0xE0U && byte <= 0xEFU)
+  {
+    utf8_codepoint = byte & 0x0FU;
+    utf8_minimum = 0x800U;
+    utf8_remaining = 2U;
+  }
+  else if (byte >= 0xF0U && byte <= 0xF4U)
+  {
+    utf8_codepoint = byte & 0x07U;
+    utf8_minimum = 0x10000U;
+    utf8_remaining = 3U;
+  }
+  else
+  {
+    write_codepoint(0xFFFDU);
   }
 }
 

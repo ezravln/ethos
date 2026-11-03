@@ -11,6 +11,7 @@ bool vga_init(void);
 bool vga_is_initialized(void);
 void vga_clear(void);
 void vga_set_color(uint8_t foreground, uint8_t background);
+void vga_set_cursor_visible(bool visible);
 void vga_write_char(char character);
 void vga_write(const char *text);
 

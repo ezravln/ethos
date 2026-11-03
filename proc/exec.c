@@ -13,6 +13,7 @@
 #define USER_ADDRESS_LIMIT 0x0000800000000000ULL
 #define USER_STACK_TOP 0x00007FFFFFFFE000ULL
 #define USER_STACK_PAGES 8U
+#define ELF_ARGUMENT_MAX 64U
 
 struct __attribute__((packed)) elf64_header {
   uint8_t ident[16];
@@ -63,6 +64,100 @@ static bool strings_equal(const char *left, const char *right)
 static bool range_inside(uint64_t offset, uint64_t size, uint64_t limit)
 {
   return offset <= limit && size <= limit - offset;
+}
+
+static bool write_user_memory(uint64_t address_space, uintptr_t destination,
+    const void *source, size_t size)
+{
+  const uint8_t *source_bytes = source;
+  while (size != 0)
+  {
+    uintptr_t page_address = destination &
+        ~(uintptr_t)(PAGING_PAGE_SIZE - 1U);
+    uint64_t physical_address;
+    if (!paging_get_mapping(address_space, page_address, &physical_address, 0))
+    {
+      return false;
+    }
+
+    size_t page_offset = destination - page_address;
+    size_t chunk_size = PAGING_PAGE_SIZE - page_offset;
+    if (chunk_size > size)
+    {
+      chunk_size = size;
+    }
+    uint8_t *target = (uint8_t *)(uintptr_t)(boot_hhdm_offset() +
+        physical_address + page_offset);
+    for (size_t index = 0; index < chunk_size; index++)
+    {
+      target[index] = source_bytes[index];
+    }
+    destination += chunk_size;
+    source_bytes += chunk_size;
+    size -= chunk_size;
+  }
+  return true;
+}
+
+static bool build_user_stack(uint64_t address_space, size_t argument_count,
+    char *const arguments[], uintptr_t *stack_pointer)
+{
+  uintptr_t stack_start = USER_STACK_TOP - USER_STACK_PAGES * PAGING_PAGE_SIZE;
+  uintptr_t cursor = USER_STACK_TOP;
+  uintptr_t argument_addresses[ELF_ARGUMENT_MAX];
+  uint64_t stack_words[ELF_ARGUMENT_MAX + 3U] = {0};
+
+  if (argument_count == 0 || argument_count > ELF_ARGUMENT_MAX ||
+      arguments == 0 || stack_pointer == 0)
+  {
+    return false;
+  }
+
+  for (size_t index = argument_count; index != 0; index--)
+  {
+    const char *argument = arguments[index - 1U];
+    if (argument == 0)
+    {
+      return false;
+    }
+    size_t length = 0;
+    while (argument[length] != '\0')
+    {
+      length++;
+    }
+    length++;
+    if (length > cursor - stack_start)
+    {
+      return false;
+    }
+    cursor -= length;
+    if (!write_user_memory(address_space, cursor, argument, length))
+    {
+      return false;
+    }
+    argument_addresses[index - 1U] = cursor;
+  }
+
+  stack_words[0] = argument_count;
+  for (size_t index = 0; index < argument_count; index++)
+  {
+    stack_words[index + 1U] = argument_addresses[index];
+  }
+  size_t word_count = argument_count + 3U;
+  size_t stack_size = word_count * sizeof(stack_words[0]);
+  if (stack_size > cursor - stack_start)
+  {
+    return false;
+  }
+  uintptr_t initial_stack = (cursor - stack_size) & ~(uintptr_t)0xFU;
+  if (initial_stack < stack_start ||
+      !write_user_memory(address_space, initial_stack, stack_words,
+          stack_size))
+  {
+    return false;
+  }
+  *stack_pointer = initial_stack;
+  return true;
 }
 
 static bool map_elf_segment(
@@ -145,7 +240,7 @@ static bool map_elf_segment(
 }
 
 static bool load_elf_module(const struct limine_file *module,
-    const char *command)
+  size_t argument_count, char *const arguments[])
 {
   if (module == 0 || module->address == 0 ||
       module->size < sizeof(struct elf64_header))
@@ -226,17 +321,20 @@ static bool load_elf_module(const struct limine_file *module,
   }
 
   uint64_t process_id;
-  if (!process_create(command, (uintptr_t)header->entry,
-      USER_STACK_TOP, address_space, &process_id))
+  uintptr_t initial_stack;
+  if (!build_user_stack(address_space, argument_count, arguments,
+      &initial_stack) || !process_create(arguments[0],
+      (uintptr_t)header->entry, initial_stack, address_space, &process_id))
   {
     return false;
   }
   return process_wait(process_id);
 }
 
-bool process_exec_command(const char *command)
+bool process_exec_command(size_t argument_count, char *const arguments[])
 {
-  if (command == 0 || command[0] == '\0')
+  if (argument_count == 0 || argument_count > ELF_ARGUMENT_MAX ||
+      arguments == 0 || arguments[0] == 0 || arguments[0][0] == '\0')
   {
     return false;
   }
@@ -249,9 +347,9 @@ bool process_exec_command(const char *command)
   for (uint64_t index = 0; index < modules->module_count; index++)
   {
     struct limine_file *module = modules->modules[index];
-    if (module != 0 && strings_equal(module->string, command))
+    if (module != 0 && strings_equal(module->string, arguments[0]))
     {
-      return load_elf_module(module, command);
+      return load_elf_module(module, argument_count, arguments);
     }
   }
   return false;

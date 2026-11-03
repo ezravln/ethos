@@ -5,16 +5,26 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define RAMFS_NAME_MAX 31U
+#define RAMFS_PATH_MAX 127U
+#define RAMFS_NAME_MAX RAMFS_PATH_MAX
 #define RAMFS_FILE_CAPACITY 4096U
 
 struct ramfs_file_info {
-  char name[RAMFS_NAME_MAX + 1U];
+  char path[RAMFS_PATH_MAX + 1U];
   size_t size;
+};
+
+struct ramfs_directory_info {
+  char path[RAMFS_PATH_MAX + 1U];
+  bool read_only;
 };
 
 bool ramfs_init(void);
 bool ramfs_is_initialized(void);
+bool ramfs_mkdir(const char *path);
+bool ramfs_is_directory(const char *path);
+size_t ramfs_directory_count(void);
+bool ramfs_directory_get_at(size_t index, struct ramfs_directory_info *info);
 bool ramfs_create(const char *path);
 bool ramfs_remove(const char *path);
 bool ramfs_write(const char *path, size_t offset, const void *data, size_t size);
