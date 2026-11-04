@@ -18,6 +18,7 @@ struct process_info {
 	uint64_t task_id;
 	char name[ETHOS_PROCESS_NAME_MAX + 1U];
 	enum process_state state;
+	uint8_t priority;
 	uintptr_t entry;
 	uintptr_t user_stack;
 	uint64_t address_space_root;
@@ -33,6 +34,7 @@ bool process_create(
 );
 bool process_exec_command(size_t argument_count, char *const arguments[]);
 bool process_wait(uint64_t process_id);
+bool process_set_priority(uint64_t process_id, uint8_t priority);
 size_t process_count(void);
 bool process_get_at(size_t index, struct process_info *info);
 

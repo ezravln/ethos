@@ -419,6 +419,31 @@ bool ramfs_remove(const char *path)
   return true;
 }
 
+bool ramfs_truncate(const char *path, size_t size)
+{
+  char parsed_path[RAMFS_PATH_MAX + 1U];
+  if (!initialized || !parse_path(path, parsed_path, false) ||
+      size > RAMFS_FILE_CAPACITY)
+  {
+    return false;
+  }
+
+  uint64_t flags = interrupt_disable();
+  size_t slot = find_file(parsed_path);
+  if (slot == RAMFS_FILE_COUNT || !parent_is_writable(parsed_path))
+  {
+    interrupt_restore(flags);
+    return false;
+  }
+  if (size < files[slot].size)
+  {
+    memset(file_data[slot] + size, 0, files[slot].size - size);
+  }
+  files[slot].size = size;
+  interrupt_restore(flags);
+  return true;
+}
+
 bool ramfs_write(const char *path, size_t offset, const void *data, size_t size)
 {
   char parsed_path[RAMFS_PATH_MAX + 1U];

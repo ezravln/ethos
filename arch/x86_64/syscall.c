@@ -3,6 +3,7 @@
 #include <console/vga.h>
 #include <debug/serial.h>
 #include <sched/scheduler.h>
+#include <proc/process.h>
 
 #define IA32_EFER 0xC0000080U
 #define IA32_STAR 0xC0000081U
@@ -77,6 +78,15 @@ uint64_t syscall_dispatch(
 		serial_write_char(character);
 		vga_write_char(character);
 		return 0;
+	}
+	if (number == ETHOS_SYSCALL_SET_PRIORITY)
+	{
+		if (argument1 > ETHOS_SCHEDULER_PRIORITY_MAX)
+		{
+			return (uint64_t)-22;
+		}
+		return process_set_priority(scheduler_current_process_id(),
+				(uint8_t)argument1) ? 0 : (uint64_t)-3;
 	}
 	return (uint64_t)-38;
 }

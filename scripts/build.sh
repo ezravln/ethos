@@ -8,13 +8,6 @@ set -Eeuo pipefail
 # Does NOT download, extract, or compile Limine.
 # ============================================================
 
-make clean
-if command -v bear >/dev/null 2>&1; then
-  bear -- make
-else
-  make
-fi
-
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 KERNEL="$ROOT_DIR/bin/ethos"
@@ -51,6 +44,12 @@ for cmd in xorriso; do
     die "Required command not found: $cmd"
 done
 
+if command -v bear >/dev/null 2>&1; then
+  bear -- make
+else
+  make
+fi
+
 # ============================================================
 # Validate existing build artifacts
 # ============================================================
@@ -62,7 +61,7 @@ done
   die "Command directory not found: bin/commands. Build the project first."
 
 shopt -s nullglob
-COMMAND_BINARIES=("$COMMAND_DIR"/*.elf)
+COMMAND_BINARIES=("$COMMAND_DIR"/*.apx)
 
 [[ -f "$LIMINE_CONFIG" ]] ||
   die "Limine configuration not found: boot/limine/limine.conf"
@@ -127,6 +126,7 @@ install -m 0644 \
 if [[ ${#COMMAND_BINARIES[@]} -gt 0 ]]; then
   install -m 0644 "${COMMAND_BINARIES[@]}" "$ISO_ROOT/usr/bin/"
 fi
+rm -f "$ISO_ROOT/usr/bin/"*.elf
 
 # ============================================================
 # Stage Limine configuration and boot files
@@ -139,10 +139,10 @@ install -m 0644 \
   "$ISO_ROOT/boot/limine/limine.conf"
 
 for command_binary in "${COMMAND_BINARIES[@]}"; do
-  command_name="$(basename -- "$command_binary" .elf)"
+  command_name="$(basename -- "$command_binary" .apx)"
   [[ "$command_name" =~ ^[A-Za-z0-9._-]+$ ]] ||
     die "Invalid command binary name: $command_name"
-  printf '    module_path: boot():/usr/bin/%s.elf\n    module_string: %s\n' \
+  printf '    module_path: boot():/usr/bin/%s.apx\n    module_string: %s\n' \
     "$command_name" "$command_name" \
     >> "$ISO_ROOT/boot/limine/limine.conf"
 done

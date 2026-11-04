@@ -1,4 +1,5 @@
 #include <shell/shell.h>
+#include <apps/typer.h>
 #include <console/vga.h>
 #include <fs/ramfs.h>
 #include <input/keyboard.h>
@@ -218,6 +219,26 @@ static bool shell_cat_file(const char *path)
 static bool execute_builtin(size_t argument_count, char *arguments[])
 {
   const char *command = arguments[0];
+  if (strings_equal(command, "typer"))
+  {
+    if (argument_count != 2U)
+    {
+      vga_write("usage: typer [path]\n");
+    }
+    else
+    {
+      char path[RAMFS_PATH_MAX + 1U];
+      if (!resolve_path(arguments[1], path))
+      {
+        vga_write("typer: invalid path\n");
+      }
+      else
+      {
+        typer_run(path);
+      }
+    }
+    return true;
+  }
   if (strings_equal(command, "echo"))
   {
     for (size_t index = 1; index < argument_count; index++)
@@ -233,8 +254,9 @@ static bool execute_builtin(size_t argument_count, char *arguments[])
   }
   if (strings_equal(command, "help"))
   {
-    vga_write("Built-ins: help echo ls cat pwd clear mkdir touch rm\n");
-    vga_write("External ELF command: hello\n");
+    vga_write("Built-ins: help echo ls cat pwd clear mkdir touch rm typer\n");
+    vga_write("External APX command: hello\n");
+    vga_write("Typer: typer [path]\n");
     return true;
   }
   if (strings_equal(command, "pwd"))

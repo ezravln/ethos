@@ -14,7 +14,9 @@
 bool paging_init(void);
 bool paging_is_initialized(void);
 void *paging_alloc_page(void);
+bool paging_free_page(void *page);
 uint64_t paging_create_address_space(void);
+bool paging_destroy_address_space(uint64_t physical_root);
 uint64_t paging_current_address_space(void);
 bool paging_switch_address_space(uint64_t physical_root);
 bool paging_map_page(

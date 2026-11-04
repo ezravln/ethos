@@ -2,6 +2,7 @@
 #include <boot/limine/limine.h>
 #include <debug/serial.h>
 #include <mm/paging.h>
+#include <proc/apx.h>
 #include <proc/process.h>
 #include <stdint.h>
 
@@ -204,6 +205,7 @@ static bool map_elf_segment(
     if (!paging_map_page(address_space, (uintptr_t)page,
         physical_address, flags))
     {
+      paging_free_page(backing_page);
       return false;
     }
   }
@@ -288,7 +290,7 @@ static bool load_elf_module(const struct limine_file *module,
     }
     if (!map_elf_segment(address_space, image, module->size, segment))
     {
-      return false;
+      goto load_failed;
     }
     if ((segment->flags & ELF_FLAG_EXECUTE) != 0 &&
         header->entry >= segment->virtual_address &&
@@ -299,7 +301,7 @@ static bool load_elf_module(const struct limine_file *module,
   }
   if (!entry_executable)
   {
-    return false;
+    goto load_failed;
   }
 
   uint64_t stack_start = USER_STACK_TOP - USER_STACK_PAGES * PAGING_PAGE_SIZE;
@@ -316,7 +318,8 @@ static bool load_elf_module(const struct limine_file *module,
         physical_address, PAGING_FLAG_USER | PAGING_FLAG_WRITE |
             PAGING_FLAG_NO_EXECUTE))
     {
-      return false;
+      paging_free_page(backing_page);
+      goto load_failed;
     }
   }
 
@@ -326,9 +329,45 @@ static bool load_elf_module(const struct limine_file *module,
       &initial_stack) || !process_create(arguments[0],
       (uintptr_t)header->entry, initial_stack, address_space, &process_id))
   {
-    return false;
+    goto load_failed;
   }
   return process_wait(process_id);
+
+load_failed:
+  paging_destroy_address_space(address_space);
+  return false;
+}
+
+static bool load_apx_module(const struct limine_file *module,
+  size_t argument_count, char *const arguments[])
+{
+  if (module == 0 || module->address == 0 ||
+      module->size < sizeof(struct apx_header))
+  {
+    return false;
+  }
+
+  const struct apx_header *header = module->address;
+  static const uint8_t apx_magic[ETHOS_APX_MAGIC_SIZE] = ETHOS_APX_MAGIC;
+  for (size_t index = 0; index < sizeof(apx_magic); index++)
+  {
+    if (header->magic[index] != apx_magic[index])
+    {
+      return false;
+    }
+  }
+  if (header->version != ETHOS_APX_VERSION ||
+      header->header_size < sizeof(*header) ||
+      header->header_size >= module->size ||
+      header->architecture != ETHOS_APX_ARCH_X86_64 || header->flags != 0)
+  {
+    return false;
+  }
+
+  struct limine_file payload = *module;
+  payload.address = (void *)((uintptr_t)module->address + header->header_size);
+  payload.size -= header->header_size;
+  return load_elf_module(&payload, argument_count, arguments);
 }
 
 bool process_exec_command(size_t argument_count, char *const arguments[])
@@ -349,7 +388,7 @@ bool process_exec_command(size_t argument_count, char *const arguments[])
     struct limine_file *module = modules->modules[index];
     if (module != 0 && strings_equal(module->string, arguments[0]))
     {
-      return load_elf_module(module, argument_count, arguments);
+      return load_apx_module(module, argument_count, arguments);
     }
   }
   return false;

@@ -6,6 +6,19 @@
 
 #define ETHOS_SYSCALL_EXIT 0U
 #define ETHOS_SYSCALL_WRITE_CHAR 1U
+#define ETHOS_SYSCALL_SET_PRIORITY 2U
+
+static inline int64_t ethos_set_priority(uint8_t priority)
+{
+	uint64_t result = ETHOS_SYSCALL_SET_PRIORITY;
+	__asm__ volatile (
+		"syscall"
+		: "+a"(result)
+		: "D"((uint64_t)priority)
+		: "rcx", "r11", "memory"
+	);
+	return (int64_t)result;
+}
 
 bool syscall_init(void);
 void syscall_set_kernel_stack(uintptr_t stack_top);

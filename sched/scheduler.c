@@ -30,6 +30,8 @@ struct thread {
   uintptr_t user_entry;
   uintptr_t user_stack;
   enum thread_state state;
+  uint8_t priority;
+  uint8_t remaining_quantum;
   bool user_process;
 };
 
@@ -166,7 +168,9 @@ bool scheduler_init(void)
   threads[0] = (struct thread) {
     .task_id = main_task_id,
     .name = "kernel-main",
-    .state = THREAD_RUNNING
+    .state = THREAD_RUNNING,
+    .priority = ETHOS_SCHEDULER_PRIORITY_DEFAULT,
+    .remaining_quantum = 1U
   };
   current_thread = 0;
   scheduler_started = false;
@@ -265,6 +269,7 @@ static bool thread_create_internal(
     .user_entry = user_entry,
     .user_stack = user_stack,
     .state = THREAD_READY,
+    .priority = ETHOS_SCHEDULER_PRIORITY_DEFAULT,
     .user_process = user_process
   };
   for (size_t index = 0; index < sizeof(stored_name); index++) {
@@ -308,15 +313,51 @@ bool thread_create_user(
   );
 }
 
+bool scheduler_set_priority(uint64_t task_id, uint8_t priority)
+{
+  if (!scheduler_initialized || task_id == 0 ||
+      priority > ETHOS_SCHEDULER_PRIORITY_MAX)
+  {
+    return false;
+  }
+
+  uint64_t flags = interrupt_disable();
+  for (uint32_t slot = 0; slot < ETHOS_MAX_THREADS; slot++)
+  {
+    struct thread *thread = &threads[slot];
+    if (thread->state == THREAD_UNUSED || thread->state == THREAD_TERMINATED ||
+        thread->task_id != task_id)
+    {
+      continue;
+    }
+    thread->priority = priority;
+    if (thread->state == THREAD_RUNNING)
+    {
+      thread->remaining_quantum = priority + 1U;
+    }
+    interrupt_restore(flags);
+    return true;
+  }
+  interrupt_restore(flags);
+  return false;
+}
+
 static uintptr_t choose_next_thread(uintptr_t interrupted_stack, bool save_current)
 {
-  struct thread *previous = &threads[current_thread];
+  uint32_t previous_index = current_thread;
+  struct thread *previous = &threads[previous_index];
   if (save_current)
   {
     previous->saved_stack = interrupted_stack;
     if (previous->state == THREAD_RUNNING)
     {
+      if (previous->remaining_quantum > 1U)
+      {
+        previous->remaining_quantum--;
+        return interrupted_stack;
+      }
       previous->state = THREAD_READY;
+      previous->remaining_quantum = 0;
     }
   }
 
@@ -347,8 +388,13 @@ static uintptr_t choose_next_thread(uintptr_t interrupted_stack, bool save_curre
   }
 
   current_thread = next;
+  if (previous_index != next && previous->state == THREAD_TERMINATED)
+  {
+    *previous = (struct thread) {0};
+  }
   struct thread *selected = &threads[next];
   selected->state = THREAD_RUNNING;
+  selected->remaining_quantum = selected->priority + 1U;
   uint64_t target_address_space = selected->address_space_root != 0
       ? selected->address_space_root
       : kernel_address_space;
@@ -423,6 +469,7 @@ bool scheduler_task_get_at(size_t index, struct scheduler_task_info *info)
         : (thread->state == THREAD_TERMINATED
             ? SCHEDULER_TASK_TERMINATED
             : SCHEDULER_TASK_READY);
+        info->priority = thread->priority;
     info->process_id = thread->process_id;
     info->kernel_stack_size = ETHOS_THREAD_STACK_SIZE;
     info->user_process = thread->user_process;

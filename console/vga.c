@@ -508,6 +508,30 @@ void vga_set_cursor_visible(bool visible)
   }
 }
 
+void vga_set_cursor_position(uint64_t column, uint64_t row)
+{
+  if (!console_initialized)
+  {
+    return;
+  }
+  uint64_t columns = framebuffer->width / CELL_WIDTH;
+  uint64_t rows = framebuffer->height / CELL_HEIGHT;
+  if (columns == 0 || rows == 0)
+  {
+    return;
+  }
+  if (cursor_visible)
+  {
+    fill_cell(cursor_x, cursor_y, background);
+  }
+  cursor_x = column < columns ? column : columns - 1U;
+  cursor_y = row < rows ? row : rows - 1U;
+  if (cursor_visible)
+  {
+    draw_cursor();
+  }
+}
+
 static void write_codepoint(uint32_t character)
 {
   if (!console_initialized)

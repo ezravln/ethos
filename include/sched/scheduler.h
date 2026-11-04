@@ -6,6 +6,9 @@
 #include <stdint.h>
 
 #define ETHOS_SCHEDULER_TASK_NAME_MAX 31U
+#define ETHOS_SCHEDULER_PRIORITY_MIN 0U
+#define ETHOS_SCHEDULER_PRIORITY_MAX 3U
+#define ETHOS_SCHEDULER_PRIORITY_DEFAULT 0U
 
 enum scheduler_task_state {
   SCHEDULER_TASK_READY = 1,
@@ -17,6 +20,7 @@ struct scheduler_task_info {
   uint64_t task_id;
   char name[ETHOS_SCHEDULER_TASK_NAME_MAX + 1U];
   enum scheduler_task_state state;
+  uint8_t priority;
   uint64_t process_id;
   uint64_t kernel_stack_size;
   bool user_process;
@@ -46,6 +50,7 @@ bool thread_create_user(
   uint64_t address_space_root,
   uint64_t *task_id
 );
+bool scheduler_set_priority(uint64_t task_id, uint8_t priority);
 
 bool scheduler_start(void);
 uint64_t scheduler_ticks(void);

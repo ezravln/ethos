@@ -15,6 +15,7 @@ static struct limine_memmap_response *memory_map;
 static uint64_t hhdm_offset;
 static size_t allocator_entry;
 static uint64_t allocator_cursor;
+static uint64_t free_page_head;
 static bool paging_initialized;
 static bool nx_supported;
 
@@ -150,9 +151,23 @@ bool paging_is_initialized(void)
 void *paging_alloc_page(void)
 {
 	uint64_t flags = interrupt_disable();
-	uint64_t physical_address;
-	if (!paging_initialized || !allocate_physical_page(&physical_address) ||
-			physical_address > UINT64_MAX - hhdm_offset)
+	uint64_t physical_address = free_page_head;
+	if (!paging_initialized)
+	{
+		interrupt_restore(flags);
+		return 0;
+	}
+	if (physical_address != 0)
+	{
+		uint64_t *page_words = physical_to_virtual(physical_address);
+		free_page_head = page_words[0];
+	}
+	else if (!allocate_physical_page(&physical_address))
+	{
+		interrupt_restore(flags);
+		return 0;
+	}
+	if (physical_address > UINT64_MAX - hhdm_offset)
 	{
 		interrupt_restore(flags);
 		return 0;
@@ -162,6 +177,62 @@ void *paging_alloc_page(void)
 	memset(page, 0, PAGING_PAGE_SIZE);
 	interrupt_restore(flags);
 	return page;
+}
+
+bool paging_free_page(void *page)
+{
+	if (!paging_initialized || page == 0)
+	{
+		return false;
+	}
+	uintptr_t virtual_address = (uintptr_t)page;
+	if (virtual_address < hhdm_offset ||
+			(virtual_address - hhdm_offset) % PAGING_PAGE_SIZE != 0)
+	{
+		return false;
+	}
+	uint64_t physical_address = virtual_address - hhdm_offset;
+	if (physical_address > PAGE_ADDRESS)
+	{
+		return false;
+	}
+
+	uint64_t flags = interrupt_disable();
+	for (uint64_t free_page = free_page_head; free_page != 0;
+			free_page = physical_to_virtual(free_page)[0])
+	{
+		if (free_page == physical_address)
+		{
+			interrupt_restore(flags);
+			return false;
+		}
+	}
+
+	bool usable = false;
+	for (size_t index = 0; index < memory_map->entry_count; index++)
+	{
+		struct limine_memmap_entry *entry = memory_map->entries[index];
+		if (entry != 0 && entry->type == LIMINE_MEMMAP_USABLE &&
+				entry->length <= UINT64_MAX - entry->base &&
+				physical_address >= entry->base &&
+				physical_address - entry->base <= entry->length &&
+				entry->length - (physical_address - entry->base) >= PAGING_PAGE_SIZE)
+		{
+			usable = true;
+			break;
+		}
+	}
+	if (!usable)
+	{
+		interrupt_restore(flags);
+		return false;
+	}
+
+	uint64_t *page_words = page;
+	page_words[0] = free_page_head;
+	free_page_head = physical_address;
+	interrupt_restore(flags);
+	return true;
 }
 
 uint64_t paging_current_address_space(void)
@@ -186,6 +257,76 @@ uint64_t paging_create_address_space(void)
 	}
 
 	return (uint64_t)(uintptr_t)new_root - hhdm_offset;
+}
+
+static bool destroy_user_table(uint64_t table_physical, unsigned int level)
+{
+	uint64_t *table = physical_to_virtual(table_physical);
+	for (size_t index = 0; index < PAGE_TABLE_ENTRIES; index++)
+	{
+		uint64_t entry = table[index];
+		if ((entry & PAGE_PRESENT) == 0)
+		{
+			continue;
+		}
+		if (level > 1U)
+		{
+			if ((entry & PAGE_LARGE) != 0 ||
+					!destroy_user_table(entry & PAGE_ADDRESS, level - 1U))
+			{
+				return false;
+			}
+			void *child = (void *)(uintptr_t)(hhdm_offset + (entry & PAGE_ADDRESS));
+			if (!paging_free_page(child))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			void *backing_page = (void *)(uintptr_t)(hhdm_offset +
+					(entry & PAGE_ADDRESS));
+			if (!paging_free_page(backing_page))
+			{
+				return false;
+			}
+		}
+		table[index] = 0;
+	}
+	return true;
+}
+
+bool paging_destroy_address_space(uint64_t physical_root)
+{
+	if (!paging_initialized || physical_root == 0 ||
+			physical_root == paging_current_address_space() ||
+			(physical_root & (PAGING_PAGE_SIZE - 1U)) != 0 ||
+			physical_root > PAGE_ADDRESS)
+	{
+		return false;
+	}
+
+	uint64_t *root = physical_to_virtual(physical_root);
+	for (size_t index = 0; index < PAGE_TABLE_ENTRIES / 2U; index++)
+	{
+		uint64_t entry = root[index];
+		if ((entry & PAGE_PRESENT) == 0)
+		{
+			continue;
+		}
+		if ((entry & PAGE_LARGE) != 0 ||
+				!destroy_user_table(entry & PAGE_ADDRESS, 3U))
+		{
+			return false;
+		}
+		void *child = (void *)(uintptr_t)(hhdm_offset + (entry & PAGE_ADDRESS));
+		if (!paging_free_page(child))
+		{
+			return false;
+		}
+		root[index] = 0;
+	}
+	return paging_free_page(root);
 }
 
 bool paging_switch_address_space(uint64_t physical_root)

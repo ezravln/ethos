@@ -6,6 +6,8 @@
 
 static bool left_shift;
 static bool right_shift;
+static bool left_control;
+static bool right_control;
 static bool extended_scancode;
 static bool initialized;
 
@@ -65,46 +67,94 @@ bool keyboard_init(void)
 
   left_shift = false;
   right_shift = false;
+  left_control = false;
+  right_control = false;
   extended_scancode = false;
   initialized = true;
   return true;
 }
 
-char keyboard_poll_char(void)
+bool keyboard_poll_event(struct keyboard_event *event)
 {
-  if (!initialized || (inb(KEYBOARD_STATUS_PORT) & 1U) == 0)
+  if (!initialized || event == 0 || (inb(KEYBOARD_STATUS_PORT) & 1U) == 0)
   {
-    return 0;
+    return false;
   }
 
   uint8_t scancode = inb(KEYBOARD_DATA_PORT);
   if (scancode == 0xE0U || scancode == 0xE1U)
   {
     extended_scancode = true;
-    return 0;
+    return false;
   }
-  if (extended_scancode)
+  bool extended = extended_scancode;
+  if (extended)
   {
     extended_scancode = false;
-    return 0;
   }
 
   bool released = (scancode & 0x80U) != 0;
   uint8_t key = scancode & 0x7FU;
+  if (key == 0x1DU)
+  {
+    if (extended)
+    {
+      right_control = !released;
+    }
+    else
+    {
+      left_control = !released;
+    }
+    return false;
+  }
   if (key == 0x2AU)
   {
     left_shift = !released;
-    return 0;
+    return false;
   }
   if (key == 0x36U)
   {
     right_shift = !released;
-    return 0;
+    return false;
   }
   if (released)
   {
-    return 0;
+    return false;
   }
 
-  return translate_scancode(key, left_shift || right_shift);
+  event->key = KEYBOARD_KEY_CHARACTER;
+  event->character = 0;
+  event->modifiers = (left_shift || right_shift ? KEYBOARD_MOD_SHIFT : 0U) |
+    (left_control || right_control ? KEYBOARD_MOD_CONTROL : 0U);
+  if (extended)
+  {
+    switch (key)
+    {
+      case 0x48: event->key = KEYBOARD_KEY_UP; return true;
+      case 0x50: event->key = KEYBOARD_KEY_DOWN; return true;
+      case 0x4B: event->key = KEYBOARD_KEY_LEFT; return true;
+      case 0x4D: event->key = KEYBOARD_KEY_RIGHT; return true;
+      case 0x47: event->key = KEYBOARD_KEY_HOME; return true;
+      case 0x4F: event->key = KEYBOARD_KEY_END; return true;
+      case 0x53: event->key = KEYBOARD_KEY_DELETE; return true;
+      default: return false;
+    }
+  }
+  char character = translate_scancode(key, left_shift || right_shift);
+  if ((left_control || right_control) && character >= 'a' && character <= 'z')
+  {
+    character = (char)(character - 'a' + 1);
+  }
+  event->character = character;
+  return character != 0;
+}
+
+char keyboard_poll_char(void)
+{
+  struct keyboard_event event;
+  if (!keyboard_poll_event(&event) || event.key != KEYBOARD_KEY_CHARACTER)
+  {
+    return 0;
+  }
+  return event.character;
 }

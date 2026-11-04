@@ -116,6 +116,7 @@ bool process_create(
 		.task_id = 0,
 		.name = {0},
 		.state = PROCESS_READY,
+		.priority = ETHOS_SCHEDULER_PRIORITY_DEFAULT,
 		.entry = entry,
 		.user_stack = user_stack,
 		.address_space_root = address_space_root
@@ -177,6 +178,7 @@ bool process_wait(uint64_t process_id)
 		uint64_t flags = interrupt_disable();
 		bool found = false;
 		bool terminated = false;
+		size_t process_slot = ETHOS_MAX_PROCESSES;
 		for (size_t slot = 0; slot < ETHOS_MAX_PROCESSES; slot++)
 		{
 			if (!processes[slot].active ||
@@ -186,30 +188,73 @@ bool process_wait(uint64_t process_id)
 			}
 
 			found = true;
+			process_slot = slot;
+			bool task_found = false;
 			for (size_t task_index = 0; task_index < scheduler_task_count(); task_index++)
 			{
 				struct scheduler_task_info task;
 				if (scheduler_task_get_at(task_index, &task) &&
 						task.task_id == processes[slot].info.task_id)
 				{
+					task_found = true;
 					terminated = task.state == SCHEDULER_TASK_TERMINATED;
 					break;
 				}
 			}
+			terminated = terminated || !task_found;
 			break;
 		}
-		interrupt_restore(flags);
 
 		if (!found)
 		{
+			interrupt_restore(flags);
 			return false;
 		}
 		if (terminated)
 		{
+			uint64_t address_space = processes[process_slot].info.address_space_root;
+			if (!paging_destroy_address_space(address_space))
+			{
+				interrupt_restore(flags);
+				return false;
+			}
+			processes[process_slot].active = false;
+			interrupt_restore(flags);
 			return true;
 		}
+		interrupt_restore(flags);
 		__asm__ volatile ("sti; hlt" ::: "memory");
 	}
+}
+
+bool process_set_priority(uint64_t process_id, uint8_t priority)
+{
+	if (!process_initialized || process_id == 0 ||
+			priority > ETHOS_SCHEDULER_PRIORITY_MAX)
+	{
+		return false;
+	}
+
+	uint64_t flags = interrupt_disable();
+	for (size_t slot = 0; slot < ETHOS_MAX_PROCESSES; slot++)
+	{
+		if (!processes[slot].active ||
+				processes[slot].info.process_id != process_id)
+		{
+			continue;
+		}
+
+		if (!scheduler_set_priority(processes[slot].info.task_id, priority))
+		{
+			interrupt_restore(flags);
+			return false;
+		}
+		processes[slot].info.priority = priority;
+		interrupt_restore(flags);
+		return true;
+	}
+	interrupt_restore(flags);
+	return false;
 }
 
 bool process_get_at(size_t index, struct process_info *info)
@@ -239,6 +284,7 @@ bool process_get_at(size_t index, struct process_info *info)
 			if (scheduler_task_get_at(task_index, &task) &&
 					task.task_id == info->task_id)
 			{
+				info->priority = task.priority;
 				info->state = task.state == SCHEDULER_TASK_TERMINATED
 						? PROCESS_TERMINATED
 						: (task.state == SCHEDULER_TASK_RUNNING

@@ -24,23 +24,9 @@ else
   CC := cc
 endif
 
-SOURCE_DIRS := \
-	arch \
-	init \
-	lib \
-	debug \
-  console \
-  input \
-  shell \
-  fs \
-	assembly \
-  limine \
-  mm \
-  proc \
-  sched
-
 USER_COMMAND_SOURCES := $(wildcard commands/*.c)
-USER_COMMAND_BINARIES := $(patsubst commands/%.c,bin/commands/%.elf,$(USER_COMMAND_SOURCES))
+USER_COMMAND_BINARIES := $(patsubst commands/%.c,bin/commands/%.apx,$(USER_COMMAND_SOURCES))
+HOSTCC ?= cc
 
 # User controllable linker command.
 LD := $(TOOLCHAIN_PREFIX)ld
@@ -132,9 +118,17 @@ endif
 
 # Use "find" to glob all *.c, *.S, and *.asm files in the tree and obtain the
 # object and header dependency file names.
-override SRCFILES := $(shell find $(SOURCE_DIRS) -type f \
-    \( -name '*.c' -o -name '*.S' -o -name '*.asm' \) \
-    2>/dev/null | LC_ALL=C sort)
+override SRCFILES := $(shell find . -type f \
+  \( -name '*.c' -o -name '*.S' -o -name '*.asm' \) \
+  -not -path './boot/*' \
+  -not -path './build/*' \
+  -not -path './bin/*' \
+  -not -path './tools/*' \
+  -not -path './obj/*' \
+  -not -path './root/*' \
+  -not -path './commands/*' \
+  -not -path './.git/*' \
+  2>/dev/null | sed 's#^\./##' | LC_ALL=C sort)
 override CFILES := $(filter %.c,$(SRCFILES))
 override ASFILES := $(filter %.S,$(SRCFILES))
 override NASMFILES := $(filter %.asm,$(SRCFILES))
@@ -159,6 +153,13 @@ bin/commands/%.elf: commands/%.c linker/user_x86_64.lds GNUmakefile
 		-Wl,-T,linker/user_x86_64.lds -Wl,--build-id=none \
 		-Wl,-z,max-page-size=0x1000 $< -o $@
 
+bin/commands/%.apx: bin/commands/%.elf build/apxpack
+	build/apxpack $< $@
+
+build/apxpack: tools/apxpack.c include/proc/apx.h GNUmakefile
+	mkdir -p "$(dir $@)"
+	$(HOSTCC) -std=c11 -O2 -Wall -Wextra -Werror -Iinclude $< -o $@
+
 # Compilation rules for *.c files.
 obj/%.c.o: %.c GNUmakefile
 	mkdir -p "$(dir $@)"
@@ -176,5 +177,4 @@ obj/%.asm.o: %.asm GNUmakefile
 
 # Remove object files and the final executable.
 .PHONY: clean
-clean:
-	rm -rf bin obj
+clean: ; rm -rf bin obj build/apxpack

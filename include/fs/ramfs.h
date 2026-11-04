@@ -27,6 +27,7 @@ size_t ramfs_directory_count(void);
 bool ramfs_directory_get_at(size_t index, struct ramfs_directory_info *info);
 bool ramfs_create(const char *path);
 bool ramfs_remove(const char *path);
+bool ramfs_truncate(const char *path, size_t size);
 bool ramfs_write(const char *path, size_t offset, const void *data, size_t size);
 bool ramfs_read(
     const char *path,
