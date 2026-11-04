@@ -68,28 +68,15 @@ The current kernel includes:
 - Fixed-capacity in-memory filesystem with nested directories, protected system paths, and file operations
 - Interactive keyboard shell that resolves commands from Limine-loaded ELF modules
 
-### Filesystem Layout
+## Documentation
 
-The initial RAMFS directory tree separates system tools, applications, libraries, and user data:
+Documentation is split by topic under [`docs/`](docs/README.md):
 
-| Path | Purpose |
-| --- | --- |
-| `/bin` | Commands available system-wide |
-| `/sbin` | System and kernel administration tools |
-| `/usr/bin` | User-space applications loaded as ELF modules |
-| `/boot` | Boot-critical kernel and Limine files; read-only in RAMFS |
-| `/lib` | Shared libraries |
-| `/lib/kernel` | Libraries reserved for kernel components |
-| `/usr/lib` | Shared libraries for user applications |
-| `/home/ethos` | Writable home directory |
-| `/home/ethos/.local/bin` | Applications owned by the user |
-| `/home/ethos/.local/lib` | Libraries owned by the user |
-| `/home/ethos/Documents`, `/Downloads`, `/Projects` | Work and personal files |
-| `/home/ethos/Media/{Music,Pictures,Videos}` | Media files |
+- [Architecture](docs/architecture/overview.md): boot flow, kernel subsystems, and process model
+- [Features](docs/features/README.md): APX executables, process management, RAMFS, shell, and Typer
+- [Development](docs/development/build-and-run.md): prerequisites, build, QEMU, and adding commands
 
-The RAMFS currently stores up to 16 files of 4 KiB each, supports nested paths and directory creation, and is cleared at reboot. System-owned directories are protected from writes. The ISO staging tree mirrors these paths; its `/boot` contents are read-only because the image is booted from the ISO. The interactive shell includes `echo`, `ls`, `cat`, `pwd`, `clear`, `mkdir`, `touch`, `rm`, `help`, and `typer` built-ins. Paths are absolute or relative to `/`, since a current working directory is not implemented yet. It tokenizes command arguments, supports single- and double-quoted arguments and backslash escaping, then passes `argc`/`argv` to external APX commands. It is not GNU Bash: variable expansion, pipelines, redirection, scripting, and other shell syntax are not implemented. Each `commands/<name>.c` is built as a separate static ELF64 payload inside an Ethos APX v1 executable (`ETHOSAPX` header, x86-64 architecture) and automatically loaded by Limine from `/usr/bin/<name>.apx` under the command name; adding a command does not require editing a command table or Limine config. The `typer` editor lives in `apps/typer.c`; run `typer /home/ethos/Documents/notes.c`. It supports arrow-key navigation, Shift+arrows selection, Ctrl+A select all, Ctrl+C copy, Ctrl+X cut, Ctrl+V paste, Ctrl+S save, Ctrl+Q exit, Home/End line navigation, Ctrl+Home/End document navigation, and Backspace/Delete. It can edit files up to the RAMFS 4 KiB limit in writable directories. Kernel sources are discovered recursively by the build system, while generated artifacts, ISO staging, bootloader files, and user commands are excluded from kernel compilation. Persistent user files require a writable block-device filesystem and are still planned. Remaining work includes broader ELF support, writable block-device filesystems, broader device support, and user-space applications.
-
-The list may change as development progresses.
+The implementation and its documentation may change as development progresses.
 
 ## Licensing
 
