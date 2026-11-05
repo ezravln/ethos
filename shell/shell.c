@@ -5,6 +5,9 @@
 #include <input/keyboard.h>
 #include <proc/process.h>
 #include <sched/scheduler.h>
+#include <net/ethernet.h>
+#include <net/ping.h>
+#include <net/wifi.h>
 #include <stddef.h>
 
 #define SHELL_LINE_MAX 127U
@@ -26,6 +29,13 @@ static bool strings_equal(const char *left, const char *right)
     index++;
   }
   return left[index] == right[index];
+}
+
+static void shell_write_hex_byte(uint8_t value)
+{
+  static const char digits[] = "0123456789ABCDEF";
+  vga_write_char(digits[value >> 4]);
+  vga_write_char(digits[value & 0x0FU]);
 }
 
 static bool resolve_path(const char *input, char output[RAMFS_PATH_MAX + 1U])
@@ -219,6 +229,63 @@ static bool shell_cat_file(const char *path)
 static bool execute_builtin(size_t argument_count, char *arguments[])
 {
   const char *command = arguments[0];
+  if (strings_equal(command, "net"))
+  {
+    if (argument_count > 2U ||
+        (argument_count == 2U && !strings_equal(arguments[1], "status")))
+    {
+      vga_write("usage: net [status]\n");
+      return true;
+    }
+    struct ethernet_device_info info;
+    if (ethernet_get_info(&info))
+    {
+      vga_write("eth0: ");
+      vga_write(info.link_up ? "link up  MAC " : "link down  MAC ");
+      for (size_t index = 0; index < sizeof(info.mac_address); index++)
+      {
+        if (index != 0)
+        {
+          vga_write_char(':');
+        }
+        shell_write_hex_byte(info.mac_address[index]);
+      }
+      vga_write_char('\n');
+    }
+    else
+    {
+      vga_write("eth0: unavailable\n");
+    }
+
+    struct wifi_device_info wifi;
+    if (!iwl_ax201_probe(&wifi) || !wifi.detected)
+    {
+      vga_write(wifi.firmware_available
+          ? "wifi: AX201 not detected, firmware module present\n"
+          : "wifi: AX201 not detected, firmware module missing\n");
+    }
+    else if (!wifi.firmware_available)
+    {
+      vga_write("wifi: AX201 detected, firmware missing, radio not initialized\n");
+    }
+    else
+    {
+      vga_write("wifi: AX201 detected, firmware present, radio not initialized\n");
+    }
+    return true;
+  }
+  if (strings_equal(command, "ping"))
+  {
+    if (argument_count != 2U)
+    {
+      vga_write("usage: ping <hostname|IPv4>\n");
+    }
+    else
+    {
+      (void)network_ping(arguments[1]);
+    }
+    return true;
+  }
   if (strings_equal(command, "typer"))
   {
     if (argument_count != 2U)
@@ -254,9 +321,10 @@ static bool execute_builtin(size_t argument_count, char *arguments[])
   }
   if (strings_equal(command, "help"))
   {
-    vga_write("Built-ins: help echo ls cat pwd clear mkdir touch rm typer\n");
+    vga_write("Built-ins: help echo ls cat pwd clear mkdir touch rm typer net ping\n");
     vga_write("External APX command: hello\n");
     vga_write("Typer: typer [path]\n");
+    vga_write("Ping: ping <hostname|IPv4>\n");
     return true;
   }
   if (strings_equal(command, "pwd"))

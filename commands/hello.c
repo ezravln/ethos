@@ -1,31 +1,21 @@
-#include <stdint.h>
-#include <stddef.h>
+#include <ethos/syscall.h>
 
 static const char message[] = "Hello from a binary command!\n";
 
 __attribute__((noreturn)) void _start(void)
 {
-  for (size_t index = 0; index < sizeof(message) - 1U; index++)
+  if (ethos_getpid() <= 0)
   {
-    uint64_t number = 1;
-    uint64_t character = (uint8_t)message[index];
-    __asm__ volatile (
-      "syscall"
-      : "+a"(number)
-      : "D"(character)
-      : "rcx", "r11", "memory"
-    );
+    (void)ethos_print("getpid failed\n");
   }
-
-  uint64_t number = 0;
-  __asm__ volatile (
-    "syscall"
-    : "+a"(number)
-    :
-    : "rcx", "r11", "memory"
-  );
-  for (;;)
+  if (ethos_set_priority(2) != 0)
   {
-    __asm__ volatile ("pause");
+    (void)ethos_print("set_priority failed\n");
   }
+  if (ethos_input() != -ETHOS_ERROR_TRY_AGAIN)
+  {
+    (void)ethos_print("input polling failed\n");
+  }
+  (void)ethos_print(message);
+  ethos_exit();
 }

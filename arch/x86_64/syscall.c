@@ -2,6 +2,7 @@
 #include <arch/x86_64/gdt.h>
 #include <console/vga.h>
 #include <debug/serial.h>
+#include <input/keyboard.h>
 #include <sched/scheduler.h>
 #include <proc/process.h>
 
@@ -67,6 +68,10 @@ uint64_t syscall_dispatch(
 	(void)argument4;
 	(void)argument5;
 	(void)argument6;
+	if (!scheduler_current_is_user())
+	{
+		return (uint64_t)-ETHOS_ERROR_PERMISSION;
+	}
 
 	if (number == ETHOS_SYSCALL_EXIT)
 	{
@@ -83,10 +88,20 @@ uint64_t syscall_dispatch(
 	{
 		if (argument1 > ETHOS_SCHEDULER_PRIORITY_MAX)
 		{
-			return (uint64_t)-22;
+			return (uint64_t)-ETHOS_ERROR_INVALID_ARGUMENT;
 		}
 		return process_set_priority(scheduler_current_process_id(),
-				(uint8_t)argument1) ? 0 : (uint64_t)-3;
+				(uint8_t)argument1) ? 0 : (uint64_t)-ETHOS_ERROR_NO_PROCESS;
 	}
-	return (uint64_t)-38;
+	if (number == ETHOS_SYSCALL_GETPID)
+	{
+		return scheduler_current_process_id();
+	}
+	if (number == ETHOS_SYSCALL_INPUT)
+	{
+		char character = keyboard_poll_char();
+		return character == 0 ? (uint64_t)-ETHOS_ERROR_TRY_AGAIN
+				: (uint8_t)character;
+	}
+	return (uint64_t)-ETHOS_ERROR_NOT_IMPLEMENTED;
 }

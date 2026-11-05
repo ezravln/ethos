@@ -17,6 +17,7 @@ LIMINE_CONFIG="$ROOT_DIR/boot/limine/limine.conf"
 ISO_ROOT="$ROOT_DIR/root"
 BUILD_DIR="$ROOT_DIR/build"
 ISO_IMAGE="$BUILD_DIR/ethos.iso"
+WIFI_FIRMWARE="${ETHOS_IWLWIFI_FIRMWARE:-}"
 
 # ============================================================
 # Logging
@@ -91,6 +92,7 @@ rm -rf "$ISO_ROOT/boot" "$ISO_ROOT/EFI"
 
 mkdir -p \
   "$ISO_ROOT/boot/limine" \
+  "$ISO_ROOT/boot/firmware" \
   "$ISO_ROOT/EFI/BOOT" \
   "$ISO_ROOT/bin" \
   "$ISO_ROOT/sbin" \
@@ -137,6 +139,24 @@ info "Copying boot configuration and Limine files..."
 install -m 0644 \
   "$LIMINE_CONFIG" \
   "$ISO_ROOT/boot/limine/limine.conf"
+
+if [[ -n "$WIFI_FIRMWARE" ]]; then
+  [[ -f "$WIFI_FIRMWARE" ]] ||
+    die "AX201 firmware file not found: $WIFI_FIRMWARE"
+  WIFI_FIRMWARE_SOURCE="$(readlink -f -- "$WIFI_FIRMWARE")"
+  if [[ "$WIFI_FIRMWARE_SOURCE" == *.zst ]]; then
+    command -v zstd >/dev/null 2>&1 ||
+      die "zstd is required to stage compressed AX201 firmware."
+    zstd -q -d -c "$WIFI_FIRMWARE_SOURCE" > \
+      "$ISO_ROOT/boot/firmware/iwlwifi-QuZ-a0-jf-b0-77.ucode"
+  else
+    install -m 0644 "$WIFI_FIRMWARE_SOURCE" \
+      "$ISO_ROOT/boot/firmware/iwlwifi-QuZ-a0-jf-b0-77.ucode"
+  fi
+  printf '    module_path: boot():/boot/firmware/iwlwifi-QuZ-a0-jf-b0-77.ucode\n    module_string: iwlwifi-QuZ-a0-jf-b0-77.ucode\n' \
+    >> "$ISO_ROOT/boot/limine/limine.conf"
+  info "Staged AX201 firmware module."
+fi
 
 for command_binary in "${COMMAND_BINARIES[@]}"; do
   command_name="$(basename -- "$command_binary" .apx)"

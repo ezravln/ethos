@@ -13,6 +13,8 @@
 #include <console/vga.h>
 #include <fs/ramfs.h>
 #include <shell/shell.h>
+#include <net/ethernet.h>
+#include <net/wifi.h>
 
 static void hcf(void) {
   for (;;) {
@@ -47,6 +49,27 @@ void kmain(void) {
   {
     vga_write("Ethos OS - x86_64\n");
     vga_write("Kernel subsystems initialized.\n");
+  }
+
+  if (ethernet_init())
+  {
+    serial_write("SUCCESS >> E1000 Ethernet adapter initialized\n");
+  }
+  else
+  {
+    serial_write("INFO >> No supported E1000 Ethernet adapter found\n");
+  }
+
+  struct wifi_device_info wifi_info;
+  if (iwl_ax201_probe(&wifi_info) && wifi_info.detected)
+  {
+    serial_write(wifi_info.firmware_available
+        ? "INFO >> Intel AX201 detected; firmware module available, radio not initialized\n"
+        : "INFO >> Intel AX201 detected; firmware module missing, radio not initialized\n");
+  }
+  else if (wifi_info.firmware_available)
+  {
+    serial_write("INFO >> AX201 firmware module loaded; no AX201 device detected\n");
   }
 
   static const char ramfs_test_data[] = "Ethos RAMFS is online.\n";
