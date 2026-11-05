@@ -15,6 +15,7 @@
 #include <shell/shell.h>
 #include <net/ethernet.h>
 #include <net/wifi.h>
+#include <display/server.h>
 
 static void hcf(void) {
   for (;;) {
@@ -49,6 +50,14 @@ void kmain(void) {
   {
     vga_write("Ethos OS - x86_64\n");
     vga_write("Kernel subsystems initialized.\n");
+    if (!display_server_init())
+    {
+      serial_write("ERROR >> Display server initialization failed\n");
+    }
+    else
+    {
+      serial_write("SUCCESS >> Display server initialized\n");
+    }
   }
 
   if (ethernet_init())

@@ -60,6 +60,7 @@ The current kernel includes:
 - 4-level paging helpers with reusable pages and user address-space teardown
 - Preemptive weighted round-robin scheduling with priorities 0-3 and ring-3 process support
 - User syscall API for exit, output, non-blocking keyboard input, PID lookup, and priority changes
+- Kernel text-cell display server with four window slots, focus, z-order, and keyboard routing
 - Polling QEMU E1000 Ethernet with DHCP, DNS, and ICMP ping; AX201 PCI detection works, but its Wi-Fi radio does not
 - Limine framebuffer text console and serial logging
 - Fixed-capacity in-memory filesystem with nested directories, protected system paths, and file operations
@@ -70,7 +71,7 @@ The current kernel includes:
 Documentation is split by topic under [`docs/`](docs/README.md):
 
 - [Architecture](docs/architecture/overview.md): boot flow, kernel subsystems, and process model
-- [Features](docs/features/README.md): Ethernet, AX201 Wi-Fi status, APX executables, process management, RAMFS, shell, Typer, and syscalls
+- [Features](docs/features/README.md): display server, Ethernet, AX201 Wi-Fi status, APX executables, process management, RAMFS, shell, Typer, and syscalls
 - [Development](docs/development/build-and-run.md): prerequisites, build, QEMU, and adding commands
 
 The implementation and its documentation may change as development progresses.

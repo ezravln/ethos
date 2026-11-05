@@ -13,6 +13,8 @@ void vga_clear(void);
 void vga_set_color(uint8_t foreground, uint8_t background);
 void vga_set_cursor_visible(bool visible);
 void vga_set_cursor_position(uint64_t column, uint64_t row);
+void vga_draw_cell(uint64_t column, uint64_t row, char character,
+	uint8_t foreground, uint8_t background);
 void vga_write_char(char character);
 void vga_write(const char *text);
 

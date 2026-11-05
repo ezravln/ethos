@@ -532,6 +532,35 @@ void vga_set_cursor_position(uint64_t column, uint64_t row)
   }
 }
 
+void vga_draw_cell(uint64_t column, uint64_t row, char character,
+    uint8_t foreground_index, uint8_t background_index)
+{
+  if (!console_initialized || column >= framebuffer->width / CELL_WIDTH ||
+      row >= framebuffer->height / CELL_HEIGHT)
+  {
+    return;
+  }
+  uint64_t saved_cursor_x = cursor_x;
+  uint64_t saved_cursor_y = cursor_y;
+  uint32_t saved_foreground = foreground;
+  uint32_t saved_background = background;
+  bool saved_cursor_visible = cursor_visible;
+  cursor_visible = false;
+  cursor_x = column;
+  cursor_y = row;
+  vga_set_color(foreground_index, background_index);
+  draw_character((uint8_t)character);
+  cursor_x = saved_cursor_x;
+  cursor_y = saved_cursor_y;
+  foreground = saved_foreground;
+  background = saved_background;
+  cursor_visible = saved_cursor_visible;
+  if (cursor_visible)
+  {
+    draw_cursor();
+  }
+}
+
 static void write_codepoint(uint32_t character)
 {
   if (!console_initialized)

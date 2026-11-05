@@ -9,6 +9,7 @@ Start with the [kernel overview](architecture/overview.md) if you want to follow
 
 ## Features
 
+- [Display server](features/display-server.md) documents the window compositor and kernel API.
 - [Ethernet](features/ethernet.md) documents the E1000 driver and what the current link does not provide.
 - [Ping](features/ping.md) covers DHCP, DNS, and ICMP testing through QEMU.
 - [Wi-Fi: Intel AX201](features/wifi.md) records AX201 detection and the current driver boundary.

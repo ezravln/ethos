@@ -8,6 +8,7 @@
 #include <net/ethernet.h>
 #include <net/ping.h>
 #include <net/wifi.h>
+#include <display/server.h>
 #include <stddef.h>
 
 #define SHELL_LINE_MAX 127U
@@ -36,6 +37,60 @@ static void shell_write_hex_byte(uint8_t value)
   static const char digits[] = "0123456789ABCDEF";
   vga_write_char(digits[value >> 4]);
   vga_write_char(digits[value & 0x0FU]);
+}
+
+static void display_demo(void)
+{
+  if (!display_server_is_initialized())
+  {
+    vga_write("display: framebuffer server unavailable\n");
+    return;
+  }
+
+  struct display_rect bounds = { .x = 12U, .y = 4U, .width = 56U,
+    .height = 16U };
+  uint32_t window_id;
+  if (!display_window_create("Ethos Display Server", bounds, &window_id))
+  {
+    vga_write("display: couldn't create window\n");
+    return;
+  }
+  (void)display_window_fill(window_id,
+      (struct display_rect){ .x = 0U, .y = 0U, .width = 54U, .height = 14U },
+      ' ', 7U, 0U);
+  (void)display_window_draw_text(window_id, 2U, 1U,
+      "Composited text-cell window", 15U, 0U);
+  (void)display_window_draw_text(window_id, 2U, 3U,
+      "Window buffers, z-order, focus and keyboard routing are active.",
+      7U, 0U);
+  (void)display_window_draw_text(window_id, 2U, 6U,
+      "Press Q to close this window and return to the shell.", 14U, 0U);
+
+  for (;;)
+  {
+    struct keyboard_event event;
+    if (!display_server_poll_event(window_id, &event))
+    {
+      __asm__ volatile ("pause");
+      continue;
+    }
+    if (event.key == KEYBOARD_KEY_CHARACTER &&
+        (event.character == 'q' || event.character == 'Q'))
+    {
+      break;
+    }
+    if (event.key == KEYBOARD_KEY_CHARACTER && event.character >= 0x20 &&
+        event.character <= 0x7E)
+    {
+      (void)display_window_fill(window_id,
+          (struct display_rect){ .x = 2U, .y = 9U, .width = 50U,
+            .height = 1U }, ' ', 7U, 0U);
+      (void)display_window_draw_text(window_id, 2U, 9U,
+          "Key event delivered to focused window.", 10U, 0U);
+    }
+  }
+  (void)display_window_destroy(window_id);
+  vga_clear();
 }
 
 static bool resolve_path(const char *input, char output[RAMFS_PATH_MAX + 1U])
@@ -286,6 +341,18 @@ static bool execute_builtin(size_t argument_count, char *arguments[])
     }
     return true;
   }
+  if (strings_equal(command, "display"))
+  {
+    if (argument_count != 1U)
+    {
+      vga_write("usage: display\n");
+    }
+    else
+    {
+      display_demo();
+    }
+    return true;
+  }
   if (strings_equal(command, "typer"))
   {
     if (argument_count != 2U)
@@ -321,10 +388,11 @@ static bool execute_builtin(size_t argument_count, char *arguments[])
   }
   if (strings_equal(command, "help"))
   {
-    vga_write("Built-ins: help echo ls cat pwd clear mkdir touch rm typer net ping\n");
+    vga_write("Built-ins: help echo ls cat pwd clear mkdir touch rm typer net ping display\n");
     vga_write("External APX command: hello\n");
     vga_write("Typer: typer [path]\n");
     vga_write("Ping: ping <hostname|IPv4>\n");
+    vga_write("Display: display\n");
     return true;
   }
   if (strings_equal(command, "pwd"))
