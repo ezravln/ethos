@@ -37,8 +37,12 @@ User code executes `SYSCALL`. The assembly stub saves registers, moves to the ru
 | 0 | Exit | Mark the calling task terminated |
 | 1 | Write character | Send one character to serial and VGA |
 | 2 | Set priority | Change the caller's priority, from 0 to 3 |
+| 3 | Get PID | Return the calling process ID |
+| 4 | Input | Poll one keyboard character; return `-EAGAIN` when none is ready |
 
-There is no user syscall for file access, creating processes, or mapping memory. The shell handles files and loads commands inside the kernel.
+`include/ethos/syscall.h` defines the public ABI. User command builds link `user/lib/syscall.c`, which wraps these calls as `ethos_print()`, `ethos_input()`, `ethos_getpid()`, `ethos_set_priority()`, and `ethos_exit()`. Functions that return a signed value use negative error numbers; unknown calls return `-ENOSYS`, and calls made from a kernel task return `-EPERM`.
+
+No syscall opens files, creates processes, or maps memory. The kernel shell owns filesystem operations and command loading; user applications should call the public API rather than kernel internals.
 
 ## Present limits
 

@@ -124,6 +124,7 @@ override SRCFILES := $(shell find . -type f \
   -not -path './build/*' \
   -not -path './bin/*' \
   -not -path './tools/*' \
+  -not -path './user/*' \
   -not -path './obj/*' \
   -not -path './root/*' \
   -not -path './commands/*' \
@@ -147,11 +148,11 @@ bin/$(OUTPUT): GNUmakefile linker/x86_64.lds $(OBJ)
 	mkdir -p "$(dir $@)"
 	$(LD) $(LDFLAGS) $(OBJ) -o $@
 
-bin/commands/%.elf: commands/%.c linker/user_x86_64.lds GNUmakefile
+bin/commands/%.elf: commands/%.c user/lib/syscall.c include/ethos/syscall.h linker/user_x86_64.lds GNUmakefile
 	mkdir -p "$(dir $@)"
-	$(CC) $(USER_CFLAGS) -nostdlib -static -no-pie \
+	$(CC) $(USER_CFLAGS) -Iuser/include -Iinclude -nostdlib -static -no-pie \
 		-Wl,-T,linker/user_x86_64.lds -Wl,--build-id=none \
-		-Wl,-z,max-page-size=0x1000 $< -o $@
+		-Wl,-z,max-page-size=0x1000 $< user/lib/syscall.c -o $@
 
 bin/commands/%.apx: bin/commands/%.elf build/apxpack
 	build/apxpack $< $@

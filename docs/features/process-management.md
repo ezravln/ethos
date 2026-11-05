@@ -12,23 +12,16 @@ The scheduler reports `READY`, `RUNNING`, or `TERMINATED`. It doesn't report `BL
 
 Priority values run from 0 to 3. A task gets `priority + 1` PIT ticks per turn; the PIT runs at 100 Hz, so level 3 holds the CPU for about 40 ms before yielding, while level 0 yields after about 10 ms. The scheduler then rotates through ready tasks instead of starving low-priority work. New tasks start at level 0.
 
-Kernel code can call `scheduler_set_priority(task_id, priority)` or `process_set_priority(pid, priority)`. User code can change only its own priority through syscall 2. This C fragment shows the raw syscall ABI; it belongs inside a freestanding command and needs the usual `<stdint.h>` declaration for `uint64_t` and `int64_t`.
+Kernel code can call `scheduler_set_priority(task_id, priority)` or `process_set_priority(pid, priority)`. User code should call `ethos_set_priority()` from `<ethos/syscall.h>`; the API library handles the register convention and returns zero on success or a negative error number.
 
 ```c
-uint64_t number = 2;
-uint64_t priority = 2;
-__asm__ volatile (
-  "syscall"
-  : "+a"(number)
-  : "D"(priority)
-  : "rcx", "r11", "memory"
-);
-if ((int64_t)number != 0) {
+int64_t result = ethos_set_priority(2);
+if (result < 0) {
   /* The kernel rejected the request. */
 }
 ```
 
-The syscall number travels in `RAX`, the requested level in `RDI`, and the result comes back in `RAX`. Values above 3 fail.
+Under the hood, syscall number 2 travels in `RAX`, the requested level in `RDI`, and the result comes back in `RAX`. Values above 3 fail. The user API also provides `ethos_getpid()`, `ethos_print()`, `ethos_write_char()`, `ethos_input()`, and `ethos_exit()`; see [System Call Interface](syscalls.md) for return values and calling rules.
 
 ## Lifetime and gaps
 

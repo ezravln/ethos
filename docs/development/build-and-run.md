@@ -22,43 +22,21 @@ The VM gets 512 MiB of memory. QEMU attaches the generated ISO as its CD-ROM and
 
 ## Add a user command
 
-Put a freestanding C source in `commands/` and define `_start`. The command below writes a short line, then exits through the syscall ABI:
+Put a freestanding C source in `commands/` and define `_start`. Include `<ethos/syscall.h>` to use the public user API; Make links `user/lib/syscall.c` into each command.
 
 ```c
-#include <stdint.h>
+#include <ethos/syscall.h>
 
 __attribute__((noreturn)) void _start(void)
 {
-  const char message[] = "Hello from Ethos.\n";
-  for (uint64_t index = 0; index < sizeof(message) - 1U; index++)
-  {
-    uint64_t number = 1;
-    uint64_t character = (uint8_t)message[index];
-    __asm__ volatile (
-      "syscall"
-      : "+a"(number)
-      : "D"(character)
-      : "rcx", "r11", "memory"
-    );
-  }
-
-  uint64_t number = 0;
-  __asm__ volatile (
-    "syscall"
-    : "+a"(number)
-    :
-    : "rcx", "r11", "memory"
-  );
-  for (;;)
-  {
-    __asm__ volatile ("pause");
-  }
+  (void)ethos_print("Hello from Ethos.\n");
+  ethos_exit();
 }
 ```
 
 Make compiles each `commands/<name>.c` as a static ELF64 file and wraps it as `bin/commands/<name>.apx`. The ISO script registers the APX as a Limine module with the same name; type that name in the shell to run it. You don't need to edit a command table or Limine config by hand.
 
-The [APX page](../features/apx-executables.md) documents loader limits, while the [kernel overview](../architecture/overview.md#system-call-path) records the syscall numbers and registers.
+The [APX page](../features/apx-executables.md) documents loader limits. See the [system call guide](../features/syscalls.md) for public functions, ABI numbers, and error values.
 
 ## Outputs
 
